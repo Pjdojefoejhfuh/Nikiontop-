@@ -1,5 +1,5 @@
 
---[[ Kay Hub ]]
+--[[ Nova Hub  ]]
 
 local function _try(fn, ...)
     local ok, err = pcall(fn, ...)
@@ -968,10 +968,10 @@ task.spawn(function()
                 local t = _G._KayBannerTitle
                 if not t or not t.Parent then return end
                 if allGearOn then
-                    t.Text = "Kay HUB ALL GEAR"
+                    t.Text = "Nova HUB ALL GEAR"
                     t.TextSize = 16
                 else
-                    t.Text = "Kay HUB"
+                    t.Text = "Nova HUB"
                     t.TextSize = 20
                 end
             end)
@@ -997,7 +997,7 @@ task.spawn(function()
         credit.Name                   = "Credit"
         credit.Size                   = UDim2.new(1, 0, 0, 14)
         credit.BackgroundTransparency = 1
-        credit.Text                   = "Give credit to Nova V.30"
+        credit.Text                   = "Join discord for the script : discord.gg/tgKBscxX2s"
         credit.TextColor3             = T.TextDim
         credit.TextSize               = 11
         credit.Font                   = Enum.Font.GothamBold
@@ -1012,7 +1012,7 @@ task.spawn(function()
         disc.Name                   = "Discord"
         disc.Size                   = UDim2.new(1, 0, 0, 13)
         disc.BackgroundTransparency = 1
-        disc.Text                   = "discord.gg/HEHE"
+        disc.Text                   = "discord.gg/tgKBscxX2s"
         disc.TextColor3             = Theme.c1
         disc.TextSize               = 11
         disc.Font                   = Enum.Font.GothamBold
@@ -1409,7 +1409,7 @@ task.spawn(function()
     TopBarLine.ZIndex                 = 5
     TopBarLine.Parent                 = TopBar
 
-    local PageTitle = Lbl(TopBar, "Kay Hub V1.0", isMobile and 11 or 13, T.Primary, Enum.Font.GothamBlack)
+    local PageTitle = Lbl(TopBar, "Nova Hub V1.0", isMobile and 11 or 13, T.Primary, Enum.Font.GothamBlack)
     PageTitle.Size           = UDim2.new(0, 120, 1, 0)
     PageTitle.Position       = UDim2.new(0, 12, 0, 0)
     PageTitle.TextYAlignment = Enum.TextYAlignment.Center
@@ -2546,7 +2546,7 @@ task.spawn(function()
         Tween(t.btn, F, {BackgroundColor3 = T.BgDeep, BackgroundTransparency = 0.02})
         Tween(t.lbl, F, {TextColor3       = T.Primary})
         Tween(t.dot, F, {BackgroundTransparency = 0})
-        PageTitle.Text = "Kay Hub V1.0"
+        PageTitle.Text = "Nova Hub V1.0"
         if old then
             local isCG = pcall(function() return old.canvas:IsA("CanvasGroup") end) and old.canvas:IsA("CanvasGroup")
             if isCG then
@@ -9205,7 +9205,7 @@ end)()
             task.spawn(function()
                 if _G._KayRagdollTechBusy then
                     pcall(function()
-                        if showToast then showToast("Ragdoll tech déjà en cours…", false) end
+                        if showToast then showToast("Ban Kick tech déjà en cours…", false) end
                     end)
                     return
                 end
@@ -9438,7 +9438,7 @@ end)()
             return "Ragdoll tech"
         end,
 
-        ["Ragdoll Tech Duel"] = function()
+        ["Ban Kick Tech "] = function()
             -- Giant Potion → equip Heatseeker → fire (Duel)
             task.spawn(function()
                 if _G._KayRagdollTechDuelBusy then
@@ -15943,567 +15943,528 @@ end)()
         }
     end)()
 
-    _G.QuickAdminPanel = (function()
-        local Players = game:GetService("Players")
-        local UIS = game:GetService("UserInputService")
-        local TweenService = game:GetService("TweenService")
-        local LP = Players.LocalPlayer
-        if not LP then
-            return { set = function() end, isEnabled = function() return false end, markCommand = function() end }
-        end
+_G.QuickAdminPanel = (function()
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local TextChatService = game:GetService("TextChatService")
+    local TweenService = game:GetService("TweenService")
+    local LP = Players.LocalPlayer
+    if not LP then
+        return { set = function() end, isEnabled = function() return false end }
+    end
 
-        local function n(class, props, parent)
-            local o = Instance.new(class)
-            if props then for k, v in pairs(props) do o[k] = v end end
-            if parent then o.Parent = parent end
-            return o
-        end
+    local EMOJI_CMD = {
+        ["🚀"] = "rocket",
+        ["🎈"] = "balloon",
+        ["🔻"] = "tiny",
+        ["🎭"] = "morph",
+        ["🔄"] = "inverse",
+        ["😱"] = "jumpscare",
+        ["🚔"] = "jail",
+        ["🎯"] = "ragdoll",
+    }
+    local EMOJI_ORDER = { "🚀", "🎈", "🔻", "🎭", "🔄", "😱", "🚔", "🎯" }
+    local ALL_ORDER = { "rocket", "balloon", "tiny", "morph", "inverse", "jumpscare", "jail", "ragdoll" }
 
-        local BASE_W, BASE_H, TITLE_H, ROW_H, BTN = 380, 78, 28, 32, 28
-        local CD = {
-            balloon = 29, tiny = 59, jail = 59, rocket = 119, ragdoll = 29,
-        }
-        local EMOJIS = { "🤏", "🔒", "🚀", "🤸‍♂️", "🎈" }
-        local EMOJI_CMD = {
-            ["🤏"] = "tiny", ["🔒"] = "jail", ["🚀"] = "rocket",
-            ["🤸‍♂️"] = "ragdoll", ["🎈"] = "balloon",
-        }
+    local COOLDOWNS = {
+        rocket = 5, balloon = 5, tiny = 5, morph = 5,
+        inverse = 5, jumpscare = 5, jail = 5, ragdoll = 5,
+    }
 
-        local M = {
-            enabled = false, gui = nil, panel = nil, scroll = nil,
-            content = nil, minBtn = nil, minimized = false,
-            conns = {}, cdUntil = {},
-            themeNodes = {},
-        }
+    local COLORS = {
+        bg        = Color3.fromRGB(10, 12, 22),
+        bgDeep    = Color3.fromRGB(6, 8, 16),
+        card      = Color3.fromRGB(18, 22, 38),
+        cardHover = Color3.fromRGB(28, 34, 56),
+        green     = Color3.fromRGB(50, 220, 120),
+        greenDark = Color3.fromRGB(30, 160, 80),
+        red       = Color3.fromRGB(240, 70, 90),
+        text      = Color3.fromRGB(240, 245, 255),
+    }
 
-        local function colPrimary()
-            if Theme and typeof(Theme.c1) == "Color3" then return Theme.c1 end
-            return Color3.fromRGB(168, 85, 247)
-        end
-        local function colBg()
-            if T and typeof(T.Bg) == "Color3" then return T.Bg end
-            return Color3.fromRGB(18, 16, 14)
-        end
-        local function colDeep()
-            if T and typeof(T.BgDeep) == "Color3" then return T.BgDeep end
-            return Color3.fromRGB(12, 10, 9)
-        end
-        local function colText()
-            if T and typeof(T.Text) == "Color3" then return T.Text end
-            return Color3.fromRGB(250, 245, 235)
-        end
-        local function colDim()
-            if T and typeof(T.TextDim) == "Color3" then return T.TextDim end
-            return Color3.fromRGB(160, 140, 120)
-        end
-        local function colSoft()
-            if T and typeof(T.Soft) == "Color3" then return T.Soft end
-            return Color3.fromRGB(34, 28, 22)
-        end
+    local M = {
+        enabled = false, gui = nil, bar = nil,
+        target = nil, targetLbl = nil,
+        playersMap = {}, cdUntil = {}, _conns = {},
+    }
 
-        local function clearConns()
-            for i = 1, #M.conns do
-                pcall(function() M.conns[i]:Disconnect() end)
-            end
-            M.conns = {}
-        end
-
-        local function drag(handle, target)
-            local on, a0, p0 = false, nil, nil
-            handle.Active = true
-            handle.InputBegan:Connect(function(inp)
-                if _G._FH_GuiLocked then return end
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                    or inp.UserInputType == Enum.UserInputType.Touch then
-                    on, a0, p0 = true, inp.Position, target.Position
-                    p0 = target.Position
-                    inp.Changed:Connect(function()
-                        if inp.UserInputState == Enum.UserInputState.End then
-                            on = false
-                            pcall(function()
-                                if saveGuiPosition then
-                                    saveGuiPosition("PanelGui_KayQuickPanel", target)
-                                elseif Config then
-                                    local positions = Config.get("positions", {}) or {}
-                                    positions["PanelGui_KayQuickPanel"] = {
-                                        target.Position.X.Scale, target.Position.X.Offset,
-                                        target.Position.Y.Scale, target.Position.Y.Offset,
-                                    }
-                                    Config.set("positions", positions)
-                                end
-                            end)
-                        end
-                    end)
-                end
-            end)
-            UIS.InputChanged:Connect(function(inp)
-                if not on then return end
-                if _G._FH_GuiLocked then on = false; return end
-                if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-                    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-                local __p = inp.Position; local __s = a0; local d = Vector2.new((typeof(__p)=="Vector3" and __p.X or __p.X) - (typeof(__s)=="Vector3" and __s.X or (__s and __s.X) or 0), (typeof(__p)=="Vector3" and __p.Y or __p.Y) - (typeof(__s)=="Vector3" and __s.Y or (__s and __s.Y) or 0))
-                local sc = target:FindFirstChildOfClass("UIScale")
-                local scale = (sc and tonumber(sc.Scale)) or 1
-                if scale < 0.05 then scale = 1 end
-                target.Position = UDim2.new(p0.X.Scale, p0.X.Offset + d.X / scale, p0.Y.Scale, p0.Y.Offset + d.Y / scale)
-            end)
-        end
-
-        local function fireCmd(cmd, target)
-            if not target or not cmd then return end
-            local fn = _G.qapRunCommand
-            if type(fn) == "function" then
-                pcall(fn, cmd, target)
-            end
-            pcall(function()
-                if showToast then
-                    showToast(cmd .. " → " .. target.Name, true)
-                end
-            end)
-        end
-
-        local function fitHeight(count)
-            if not M.panel or M.minimized then return end
-            local h = (count <= 1) and BASE_H or (BASE_H + (count - 1) * (ROW_H + 4))
-            h = math.clamp(h, BASE_H, 400)
-            M.panel.Size = UDim2.fromOffset(BASE_W, h)
-        end
-
-        local function otherCount()
-            local c = 0
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LP then c = c + 1 end
-            end
-            return c
-        end
-
-        local function isOnCD(uid, cmd)
-            cmd = string.lower(tostring(cmd or ""))
-            -- Sync with Command Cooldowns GUI / AdminPanel global CD
-            local globalCd = false
-            pcall(function()
-                if _G._FH_CD_ONCD and _G._FH_CD_ONCD[cmd] then globalCd = true end
-            end)
-            if globalCd then return true end
-            pcall(function()
-                if _G.DataManager and type(_G.DataManager.isOnCooldown) == "function" then
-                    if _G.DataManager.isOnCooldown(cmd) then globalCd = true end
-                end
-            end)
-            if globalCd then return true end
-            local t = M.cdUntil[uid]
-            if not t then return false end
-            local untilT = t[cmd]
-            return untilT and tick() < untilT
-        end
-
-        local function paintBtn(btn, uid, cmd)
-            if isOnCD(uid, cmd) then
-                btn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-                btn.TextColor3 = Color3.fromRGB(255, 220, 220)
-                return true
-            end
-            local p = M.themeNodes.primary or colPrimary()
-            btn.BackgroundColor3 = Color3.new(
-                math.clamp(p.R * 0.45, 0, 1),
-                math.clamp(p.G * 0.45, 0, 1),
-                math.clamp(p.B * 0.55, 0, 1)
-            )
-            btn.TextColor3 = colText()
-            return false
-        end
-
-        local function startCD(uid, cmd)
-            local sec = CD[cmd]
-            if not sec then return end
-            if not M.cdUntil[uid] then M.cdUntil[uid] = {} end
-            M.cdUntil[uid][cmd] = tick() + sec
-        end
-
-        M.startCD = startCD
-        M.cdTable = CD
-        M.getCdUntil = function() return M.cdUntil end
-        M.markCommand = function(cmd, targetPlayer)
-            if not cmd then return end
-            local sec = CD[cmd] or 30
-            local uid = targetPlayer and targetPlayer.UserId
-            if uid then
-                if not M.cdUntil[uid] then M.cdUntil[uid] = {} end
-                M.cdUntil[uid][cmd] = tick() + sec
-            end
-            if _G._FH_CD_ONCD then
-                _G._FH_CD_ONCD[cmd] = true
-                task.delay(sec, function()
-                    if _G._FH_CD_ONCD then _G._FH_CD_ONCD[cmd] = nil end
-                end)
-            end
-        end
-
-        local function applyTheme(primary)
-            primary = primary or colPrimary()
-            M.themeNodes.primary = primary
-            local tn = M.themeNodes
-            if tn.panel then
-                pcall(function() tn.panel.BackgroundColor3 = colBg() end)
-            end
-            if tn.title then
-                pcall(function() tn.title.BackgroundColor3 = colDeep() end)
-            end
-            if tn.minBtn then
-                pcall(function() tn.minBtn.BackgroundColor3 = colSoft() end)
-            end
-            if tn.strokeGrad then
-                pcall(function()
-                    tn.strokeGrad.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, primary),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
-                    })
-                end)
-            end
-            if M.scroll then
-                for _, row in ipairs(M.scroll:GetChildren()) do
-                    if row:IsA("Frame") then
-                        for _, d in ipairs(row:GetDescendants()) do
-                            if d:IsA("TextButton") and d.Text ~= "" then
-                                local cmd = EMOJI_CMD[d.Text]
-                                if cmd then
-                                    local uid = tonumber(row.Name:match("P_(%d+)"))
-                                    if uid then paintBtn(d, uid, cmd) end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        local function buildRow(plr, parent)
-            local uid = plr.UserId
-            local row = n("Frame", {
-                Name = "P_" .. uid,
-                Size = UDim2.new(1, 0, 0, ROW_H),
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-            }, parent)
-
-            local av = n("ImageLabel", {
-                Size = UDim2.fromOffset(24, 24),
-                Position = UDim2.new(0, 0, 0.5, -12),
-                BackgroundTransparency = 1,
-            }, row)
-            n("UICorner", { CornerRadius = UDim.new(1, 0) }, av)
-            task.spawn(function()
-                local ok, img = pcall(function()
-                    return Players:GetUserThumbnailAsync(uid, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
-                end)
-                if ok and img and av.Parent then av.Image = img end
-            end)
-
-            n("TextLabel", {
-                Size = UDim2.new(0.42, -28, 1, 0),
-                Position = UDim2.new(0, 30, 0, 0),
-                BackgroundTransparency = 1,
-                Text = ("%s (@%s)"):format(plr.DisplayName, plr.Name),
-                TextColor3 = colText(),
-                TextSize = 12,
-                Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                TextTruncate = Enum.TextTruncate.AtEnd,
-            }, row)
-
-            local btnRow = n("Frame", {
-                Size = UDim2.new(0.58, -4, 1, 0),
-                Position = UDim2.new(0.42, 0, 0, 0),
-                BackgroundTransparency = 1,
-            }, row)
-            n("UIListLayout", {
-                FillDirection = Enum.FillDirection.Horizontal,
-                HorizontalAlignment = Enum.HorizontalAlignment.Right,
-                VerticalAlignment = Enum.VerticalAlignment.Center,
-                Padding = UDim.new(0, 4),
-            }, btnRow)
-
-            for _, emoji in ipairs(EMOJIS) do
-                local cmd = EMOJI_CMD[emoji]
-                local b = n("TextButton", {
-                    Size = UDim2.fromOffset(BTN, BTN),
-                    BackgroundColor3 = colSoft(),
-                    Text = emoji,
-                    TextColor3 = colText(),
-                    TextSize = 13,
-                    Font = Enum.Font.GothamBold,
-                    AutoButtonColor = false,
-                }, btnRow)
-                n("UICorner", { CornerRadius = UDim.new(0, 12) }, b)
-                local st = n("UIStroke", { Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.45 }, b)
-                pcall(function()
-                    local g = Instance.new("UIGradient")
-                    g.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, colPrimary()),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
-                    })
-                    g.Rotation = 120
-                    g.Parent = st
-                end)
-
-                paintBtn(b, uid, cmd)
-                task.spawn(function()
-                    while b.Parent do
-                        local busy = paintBtn(b, uid, cmd)
-                        task.wait(busy and 0.2 or 0.7)
-                    end
-                end)
-
-                b.Activated:Connect(function()
-                    if not cmd then return end
-                    if isOnCD(uid, cmd) then return end
-                    startCD(uid, cmd)
-                    paintBtn(b, uid, cmd)
-                    fireCmd(cmd, plr)
-                end)
-                b.MouseButton1Click:Connect(function()
-                    if not cmd then return end
-                    if isOnCD(uid, cmd) then return end
-                    startCD(uid, cmd)
-                    paintBtn(b, uid, cmd)
-                    fireCmd(cmd, plr)
-                end)
-            end
-        end
-
-        local function populate()
-            if not M.scroll then return end
-            for _, ch in ipairs(M.scroll:GetChildren()) do
-                if ch:IsA("Frame") or (ch:IsA("TextLabel") and ch.Name == "Empty") then
-                    ch:Destroy()
-                end
-            end
-            local list = {}
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LP then list[#list + 1] = p end
-            end
-            table.sort(list, function(a, b)
-                return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower()
-            end)
-            if #list == 0 then
-                n("TextLabel", {
-                    Name = "Empty",
-                    Size = UDim2.new(1, 0, 0, ROW_H),
-                    BackgroundTransparency = 1,
-                    Text = "Aucun autre joueur",
-                    TextColor3 = colDim(),
-                    TextSize = 12,
-                    Font = Enum.Font.Gotham,
-                }, M.scroll)
+    local function sendMessage(text)
+        pcall(function()
+            if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                TextChatService.TextChannels.RBXGeneral:SendAsync(text)
             else
-                for i = 1, #list do
-                    buildRow(list[i], M.scroll)
+                ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(text, "All")
+            end
+        end)
+    end
+
+    local function isOnCD(uid, cmd)
+        local t = M.cdUntil[uid]
+        if not t then return false end
+        local untilT = t[cmd]
+        return untilT and tick() < untilT
+    end
+
+    local function startCD(uid, cmd)
+        local sec = COOLDOWNS[cmd] or 5
+        if not M.cdUntil[uid] then M.cdUntil[uid] = {} end
+        M.cdUntil[uid][cmd] = tick() + sec
+    end
+
+    local function fireCommand(target, cmd)
+        if not target or not cmd then return end
+        sendMessage(";" .. cmd .. " " .. target.Name)
+        pcall(function()
+            if showToast then showToast(";" .. cmd .. " → " .. target.Name, true) end
+        end)
+    end
+
+    local function getClosest()
+        local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if not myHRP then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LP then return p end
+            end
+            return nil
+        end
+        local best, bestDist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then
+                local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (hrp.Position - myHRP.Position).Magnitude
+                    if d < bestDist then best, bestDist = p, d end
                 end
             end
-            fitHeight(#list)
         end
+        return best
+    end
 
-        local function buildPanel()
-            if M.gui and M.gui.Parent then return end
-            for _, name in ipairs({ "PanelGui_KayQuickPanel", "PanelGui_Admin Panel" }) do
-                pcall(function()
-                    local pg = LP:FindFirstChild("PlayerGui")
-                    local old = pg and pg:FindFirstChild(name)
-                    if old then old:Destroy() end
-                end)
-            end
+    local function updateTargetLabel()
+        if not M.targetLbl then return end
+        M.targetLbl.Text = M.target and ("🎯 " .. M.target.Name) or "🎯 ..."
+    end
 
-            local gui = Instance.new("ScreenGui")
-            gui.Name = "PanelGui_KayQuickPanel"
-            gui.ResetOnSpawn = false
-            gui.IgnoreGuiInset = true
-            gui.DisplayOrder = 230
-            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-            gui.Enabled = false
-            M.gui = gui
+    local function cycleTarget()
+        local list = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then table.insert(list, p) end
+        end
+        if #list == 0 then M.target = nil; updateTargetLabel(); return end
+        local idx = 1
+        for i, p in ipairs(list) do
+            if p == M.target then idx = i + 1; break end
+        end
+        if idx > #list then idx = 1 end
+        M.target = list[idx]
+        updateTargetLabel()
+    end
 
-            local parented = false
-            pcall(function()
-                if typeof(gethui) == "function" then
-                    gui.Parent = gethui()
-                    parented = gui.Parent ~= nil
+    -- Style bouton
+    local function styleButton(btn, baseColor, hoverColor, strokeColor)
+        btn.BackgroundColor3 = baseColor
+        btn.AutoButtonColor = false
+        local stroke = Instance.new("UIStroke", btn)
+        stroke.Color = strokeColor or Color3.fromRGB(255, 255, 255)
+        stroke.Thickness = 1.2
+        stroke.Transparency = 0.75
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = hoverColor}):Play()
+            TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0.25}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = baseColor}):Play()
+            TweenService:Create(stroke, TweenInfo.new(0.15), {Transparency = 0.75}):Play()
+        end)
+        return stroke
+    end
+
+    local function onEmojiClick(emoji, btn)
+        if not M.target then
+            pcall(function() if showToast then showToast("No target", false) end end)
+            return
+        end
+        local cmd = EMOJI_CMD[emoji]
+        if not cmd then return end
+        if isOnCD(M.target.UserId, cmd) then
+            local orig = btn.BackgroundColor3
+            btn.BackgroundColor3 = COLORS.red
+            task.delay(0.15, function()
+                if btn and btn.Parent then
+                    TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = orig}):Play()
                 end
             end)
-            if not parented then
-                pcall(function()
-                    gui.Parent = game:GetService("CoreGui")
-                    parented = gui.Parent ~= nil
-                end)
+            return
+        end
+        startCD(M.target.UserId, cmd)
+        fireCommand(M.target, cmd)
+        local orig = btn.BackgroundColor3
+        btn.BackgroundColor3 = COLORS.green
+        task.delay(0.15, function()
+            if btn and btn.Parent then
+                TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = orig}):Play()
             end
-            if not parented then
-                local pg = LP:FindFirstChildOfClass("PlayerGui") or LP:WaitForChild("PlayerGui", 5)
-                if pg then gui.Parent = pg end
-            end
+        end)
+    end
 
-            local panel = n("Frame", {
-                Name = "Frame",
-                Size = UDim2.fromOffset(BASE_W, BASE_H),
-                Position = UDim2.new(0.5, 0, 0.5, 0),
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = colBg(),
-                BackgroundTransparency = 0.1,
-                BorderSizePixel = 0,
-                ClipsDescendants = true,
-                Active = true,
-            }, gui)
-            M.panel = panel
-            n("UICorner", { CornerRadius = UDim.new(0, 12) }, panel)
-
-            pcall(function()
-                if loadGuiPosition then loadGuiPosition("PanelGui_KayQuickPanel", panel) end
-            end)
-
-            local stroke = n("UIStroke", {
-                Color = Color3.fromRGB(255, 255, 255),
-                Thickness = 1.3,
-            }, panel)
-            local strokeGrad = n("UIGradient", {
-                Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, colPrimary()),
-                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
-                }),
-                Rotation = 200,
-            }, stroke)
-
-            local title = n("Frame", {
-                Size = UDim2.new(1, 0, 0, TITLE_H),
-                BackgroundColor3 = colDeep(),
-                BorderSizePixel = 0,
-                Active = true,
-            }, panel)
-            n("UICorner", { CornerRadius = UDim.new(0, 12) }, title)
-            n("TextLabel", {
-                Size = UDim2.new(1, -36, 1, 0),
-                Position = UDim2.new(0, 10, 0, 0),
-                BackgroundTransparency = 1,
-                Text = "Quick Admin",
-                TextColor3 = colText(),
-                TextSize = 12,
-                Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, title)
-
-            local minBtn = n("TextButton", {
-                Name = "Min",
-                Size = UDim2.fromOffset(20, 20),
-                Position = UDim2.new(1, -24, 0.5, -10),
-                BackgroundColor3 = colSoft(),
-                Text = "–",
-                TextColor3 = colText(),
-                TextSize = 14,
-                Font = Enum.Font.GothamBold,
-                AutoButtonColor = false,
-            }, title)
-            n("UICorner", { CornerRadius = UDim.new(1, 0) }, minBtn)
-            M.minBtn = minBtn
-
-            pcall(function()
-                local style = _G._KayStyleLikeHub
-                if style then style(panel, title) end
-            end)
-
-            local content = n("Frame", {
-                Name = "Content",
-                Size = UDim2.new(1, 0, 1, -TITLE_H),
-                Position = UDim2.new(0, 0, 0, TITLE_H),
-                BackgroundTransparency = 1,
-            }, panel)
-            M.content = content
-            n("UIPadding", {
-                PaddingTop = UDim.new(0, 4),
-                PaddingLeft = UDim.new(0, 6),
-                PaddingRight = UDim.new(0, 6),
-                PaddingBottom = UDim.new(0, 4),
-            }, content)
-
-            local scroll = n("ScrollingFrame", {
-                Size = UDim2.new(1, 0, 1, 0),
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                ScrollBarThickness = 3,
-                ScrollBarImageTransparency = 0.3,
-                CanvasSize = UDim2.new(0, 0, 0, 0),
-                AutomaticCanvasSize = Enum.AutomaticSize.Y,
-                ScrollingDirection = Enum.ScrollingDirection.Y,
-            }, content)
-            M.scroll = scroll
-            n("UIListLayout", {
-                Padding = UDim.new(0, 4),
-                SortOrder = Enum.SortOrder.LayoutOrder,
-            }, scroll)
-
-            M.themeNodes = {
-                panel = panel, title = title, minBtn = minBtn,
-                strokeGrad = strokeGrad, primary = colPrimary(),
-            }
-
-            pcall(function()
-                local d = _G.makePanelDraggable or makePanelDraggable
-                if d then d(title, panel, "PanelGui_KayQuickPanel") end
-            end)
-
-            minBtn.Activated:Connect(function()
-                M.minimized = not M.minimized
-                content.Visible = not M.minimized
-                if M.minimized then
-                    panel.Size = UDim2.fromOffset(BASE_W, TITLE_H)
-                    minBtn.Text = "+"
-                else
-                    minBtn.Text = "–"
-                    fitHeight(otherCount())
+    local function onAllClick(btn)
+        if not M.target then
+            pcall(function() if showToast then showToast("No target", false) end end)
+            return
+        end
+        task.spawn(function()
+            for _, cmd in ipairs(ALL_ORDER) do
+                if not isOnCD(M.target.UserId, cmd) then
+                    startCD(M.target.UserId, cmd)
+                    fireCommand(M.target, cmd)
+                    task.wait(0.2)
                 end
-            end)
-
-            applyTheme(colPrimary())
-            populate()
-        end
-
-        function M.set(on)
-            M.enabled = on and true or false
-            if M.enabled then
-                if not M.gui or not M.gui.Parent then buildPanel() end
-                if M.gui then M.gui.Enabled = true end
-                clearConns()
-                table.insert(M.conns, Players.PlayerAdded:Connect(function()
-                    task.wait(0.12)
-                    if M.enabled then populate() end
-                end))
-                table.insert(M.conns, Players.PlayerRemoving:Connect(function(p)
-                    if p then M.cdUntil[p.UserId] = nil end
-                    task.wait(0.12)
-                    if M.enabled then populate() end
-                end))
-                populate()
-                applyTheme(colPrimary())
-            else
-                clearConns()
-                if M.gui then M.gui.Enabled = false end
             end
-            pcall(function()
-                if Config then Config.set("quick_admin_panel_visible", M.enabled) end
-            end)
-        end
+        end)
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = COLORS.green}):Play()
+        task.delay(0.3, function()
+            if btn and btn.Parent then
+                TweenService:Create(btn, TweenInfo.new(0.25), {BackgroundColor3 = COLORS.greenDark}):Play()
+            end
+        end)
+    end
 
-        function M.isEnabled()
-            return M.enabled
-        end
+    local function buildGui()
+        if M.gui and M.gui.Parent then return end
 
-        function M.repaint()
-            applyTheme(colPrimary())
-        end
-
-        task.defer(function()
-            pcall(buildPanel)
-            if M.gui then M.gui.Enabled = false end
+        pcall(function()
+            local pg = LP:FindFirstChild("PlayerGui")
+            local old = pg and pg:FindFirstChild("NovaAPSpam")
+            if old then old:Destroy() end
+        end)
+        pcall(function()
+            if typeof(gethui) == "function" then
+                local h = gethui()
+                local old = h and h:FindFirstChild("NovaAPSpam")
+                if old then old:Destroy() end
+            end
         end)
 
-        return M
-    end)()
+        local parent = nil
+        pcall(function()
+            if typeof(gethui) == "function" then parent = gethui() end
+        end)
+        if not parent then
+            pcall(function() parent = game:GetService("CoreGui") end)
+        end
+        if not parent then
+            parent = LP:FindFirstChildOfClass("PlayerGui") or LP:WaitForChild("PlayerGui", 5)
+        end
+
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "NovaAPSpam"
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.DisplayOrder = 999997
+        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        gui.Enabled = false
+        pcall(function()
+            if typeof(protect_gui) == "function" then protect_gui(gui)
+            elseif syn and syn.protect_gui then syn.protect_gui(gui) end
+        end)
+        gui.Parent = parent
+        M.gui = gui
+
+        -- ═══ BARRE COMPACTE ═══
+        local BAR_W = 400
+        local BAR_H = 38
+
+        local bar = Instance.new("Frame")
+        bar.Name = "Bar"
+        bar.Size = UDim2.new(0, BAR_W, 0, BAR_H)
+        bar.Position = UDim2.new(0.5, -BAR_W / 2, 0, 20)
+        bar.BackgroundColor3 = COLORS.bg
+        bar.BackgroundTransparency = 0.05
+        bar.BorderSizePixel = 0
+        bar.Active = true
+        bar.Parent = gui
+        M.bar = bar
+        Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 19)
+
+        -- Fond dégradé
+        local bgGrad = Instance.new("UIGradient", bar)
+        bgGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, COLORS.bgDeep),
+            ColorSequenceKeypoint.new(1, COLORS.bg),
+        })
+        bgGrad.Rotation = 90
+
+        -- Bordure dégradée animée
+        local stroke = Instance.new("UIStroke", bar)
+        stroke.Thickness = 1.5
+        stroke.Transparency = 0.15
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        local strokeGrad = Instance.new("UIGradient", stroke)
+        strokeGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 130, 255)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 100, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 130, 255)),
+        })
+        task.spawn(function()
+            while bar and bar.Parent do
+                local t = TweenService:Create(strokeGrad, TweenInfo.new(4, Enum.EasingStyle.Linear), {Rotation = 360})
+                t:Play()
+                t.Completed:Wait()
+                if strokeGrad and strokeGrad.Parent then strokeGrad.Rotation = 0 end
+            end
+        end)
+
+        -- Layout
+        local layout = Instance.new("UIListLayout", bar)
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        layout.VerticalAlignment = Enum.VerticalAlignment.Center
+        layout.Padding = UDim.new(0, 4)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local pad = Instance.new("UIPadding", bar)
+        pad.PaddingLeft = UDim.new(0, 8)
+        pad.PaddingRight = UDim.new(0, 8)
+        pad.PaddingTop = UDim.new(0, 5)
+        pad.PaddingBottom = UDim.new(0, 5)
+
+        -- Titre "Nova"
+        local titleLbl = Instance.new("TextLabel")
+        titleLbl.Name = "Title"
+        titleLbl.Size = UDim2.new(0, 46, 1, 0)
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Text = "Nova"
+        titleLbl.TextSize = 15
+        titleLbl.Font = Enum.Font.GothamBlack
+        titleLbl.TextColor3 = COLORS.text
+        titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+        titleLbl.LayoutOrder = 1
+        titleLbl.Parent = bar
+
+        local titleGrad = Instance.new("UIGradient", titleLbl)
+        titleGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 180, 255)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 150, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 180, 255)),
+        })
+        task.spawn(function()
+            while titleLbl and titleLbl.Parent do
+                local t = TweenService:Create(titleGrad, TweenInfo.new(3, Enum.EasingStyle.Linear), {Rotation = 360})
+                t:Play()
+                t.Completed:Wait()
+                if titleGrad and titleGrad.Parent then titleGrad.Rotation = 0 end
+            end
+        end)
+
+        -- Label cible
+        local targetLbl = Instance.new("TextButton")
+        targetLbl.Name = "TargetLbl"
+        targetLbl.Size = UDim2.new(0, 78, 1, 0)
+        targetLbl.BackgroundColor3 = COLORS.card
+        targetLbl.BorderSizePixel = 0
+        targetLbl.Text = "🎯 ..."
+        targetLbl.TextSize = 10
+        targetLbl.Font = Enum.Font.GothamBold
+        targetLbl.TextColor3 = COLORS.text
+        targetLbl.AutoButtonColor = false
+        targetLbl.LayoutOrder = 2
+        targetLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        targetLbl.Parent = bar
+        Instance.new("UICorner", targetLbl).CornerRadius = UDim.new(0, 10)
+        M.targetLbl = targetLbl
+
+        styleButton(targetLbl, COLORS.card, COLORS.cardHover)
+        targetLbl.MouseButton1Click:Connect(cycleTarget)
+        targetLbl.Activated:Connect(cycleTarget)
+
+        -- Bouton ALL vert
+        local allBtn = Instance.new("TextButton")
+        allBtn.Name = "AllBtn"
+        allBtn.Size = UDim2.new(0, 40, 1, 0)
+        allBtn.BackgroundColor3 = COLORS.greenDark
+        allBtn.BorderSizePixel = 0
+        allBtn.Text = "ALL"
+        allBtn.TextSize = 10
+        allBtn.Font = Enum.Font.GothamBlack
+        allBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        allBtn.AutoButtonColor = false
+        allBtn.LayoutOrder = 3
+        allBtn.Parent = bar
+        Instance.new("UICorner", allBtn).CornerRadius = UDim.new(0, 10)
+
+        local allStroke = styleButton(allBtn, COLORS.greenDark, COLORS.green)
+        allStroke.Color = Color3.fromRGB(120, 255, 160)
+
+        allBtn.MouseButton1Click:Connect(function() onAllClick(allBtn) end)
+        allBtn.Activated:Connect(function() onAllClick(allBtn) end)
+
+        -- Boutons emojis
+        local orderCounter = 4
+        for _, emoji in ipairs(EMOJI_ORDER) do
+            local eBtn = Instance.new("TextButton")
+            eBtn.Name = "Emoji_" .. emoji
+            eBtn.Size = UDim2.new(0, 28, 1, 0)
+            eBtn.BackgroundColor3 = COLORS.card
+            eBtn.BorderSizePixel = 0
+            eBtn.Text = emoji
+            eBtn.TextSize = 13
+            eBtn.Font = Enum.Font.GothamBold
+            eBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            eBtn.AutoButtonColor = false
+            eBtn.LayoutOrder = orderCounter
+            eBtn.Parent = bar
+            Instance.new("UICorner", eBtn).CornerRadius = UDim.new(0, 10)
+            orderCounter = orderCounter + 1
+
+            local baseCol, hoverCol
+            if emoji == "🚀" then
+                baseCol, hoverCol = Color3.fromRGB(60, 90, 200), Color3.fromRGB(90, 130, 255)
+            elseif emoji == "🎈" then
+                baseCol, hoverCol = Color3.fromRGB(180, 60, 120), Color3.fromRGB(230, 90, 160)
+            elseif emoji == "🔻" then
+                baseCol, hoverCol = Color3.fromRGB(180, 90, 40), Color3.fromRGB(230, 130, 70)
+            elseif emoji == "🎭" then
+                baseCol, hoverCol = Color3.fromRGB(140, 60, 180), Color3.fromRGB(180, 90, 230)
+            elseif emoji == "🔄" then
+                baseCol, hoverCol = Color3.fromRGB(40, 140, 160), Color3.fromRGB(60, 180, 200)
+            elseif emoji == "😱" then
+                baseCol, hoverCol = Color3.fromRGB(180, 160, 40), Color3.fromRGB(230, 200, 60)
+            elseif emoji == "🚔" then
+                baseCol, hoverCol = Color3.fromRGB(40, 80, 180), Color3.fromRGB(60, 120, 230)
+            elseif emoji == "🎯" then
+                baseCol, hoverCol = Color3.fromRGB(180, 50, 60), Color3.fromRGB(230, 80, 90)
+            else
+                baseCol, hoverCol = COLORS.card, COLORS.cardHover
+            end
+
+            styleButton(eBtn, baseCol, hoverCol)
+
+            eBtn.MouseButton1Click:Connect(function() onEmojiClick(emoji, eBtn) end)
+            eBtn.Activated:Connect(function() onEmojiClick(emoji, eBtn) end)
+        end
+
+        -- Drag
+        local dragging = false
+        local dragStart, startPos
+        bar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                if _G._FH_GuiLocked then return end
+                local absPos = input.Position
+                for _, ch in ipairs(bar:GetChildren()) do
+                    if ch:IsA("GuiButton") then
+                        local ap = ch.AbsolutePosition
+                        local as = ch.AbsoluteSize
+                        if absPos.X >= ap.X and absPos.X <= ap.X + as.X
+                            and absPos.Y >= ap.Y and absPos.Y <= ap.Y + as.Y then
+                            return
+                        end
+                    end
+                end
+                dragging = true
+                dragStart = input.Position
+                startPos = bar.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        pcall(function()
+                            if Config then
+                                local positions = Config.get("positions", {}) or {}
+                                if type(positions) ~= "table" then positions = {} end
+                                positions["NovaAPSpam"] = {
+                                    bar.Position.X.Scale, bar.Position.X.Offset,
+                                    bar.Position.Y.Scale, bar.Position.Y.Offset,
+                                }
+                                Config.set("positions", positions)
+                                if Config.flush then Config.flush() end
+                            end
+                        end)
+                    end
+                end)
+            end
+        end)
+        bar.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if _G._FH_GuiLocked then dragging = false; return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - dragStart
+            bar.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end)
+
+        pcall(function()
+            if Config then
+                local positions = Config.get("positions", {}) or {}
+                local p = positions["NovaAPSpam"]
+                if type(p) == "table" and #p >= 4 then
+                    bar.Position = UDim2.new(p[1], p[2], p[3], p[4])
+                end
+            end
+        end)
+
+        M.target = getClosest()
+        updateTargetLabel()
+
+        table.insert(M._conns, Players.PlayerAdded:Connect(function()
+            task.wait(0.3)
+            if not M.target then
+                M.target = getClosest()
+                updateTargetLabel()
+            end
+        end))
+        table.insert(M._conns, Players.PlayerRemoving:Connect(function(plr)
+            if M.target == plr then
+                M.target = getClosest()
+                updateTargetLabel()
+            end
+        end))
+    end
+
+    function M.set(on)
+        on = on and true or false
+        M.enabled = on
+        if on then
+            if not M.gui or not M.gui.Parent then buildGui() end
+            if M.gui then M.gui.Enabled = true end
+            if not M.target then
+                M.target = getClosest()
+                updateTargetLabel()
+            end
+        else
+            if M.gui then M.gui.Enabled = false end
+        end
+        pcall(function()
+            if Config then
+                Config.set("quick_admin_panel_visible", on)
+                Config.set("toggle:Quick Admin Panel", on)
+            end
+        end)
+    end
+
+    function M.setVisible(on) M.set(on) end
+    function M.isEnabled() return M.enabled and M.gui and M.gui.Enabled end
+    function M.isOpen() return M.gui ~= nil and M.gui.Parent ~= nil end
+    function M.repaint() end
+
+    table.insert(_G._FH_TEARDOWN, function()
+        pcall(function()
+            for _, c in ipairs(M._conns) do c:Disconnect() end
+            M._conns = {}
+            if M.gui then M.gui:Destroy() end
+        end)
+    end)
+
+    task.defer(function()
+        pcall(buildGui)
+        if M.gui then M.gui.Enabled = false end
+    end)
+
+    return M
+end)()
 
     _G.coreSpamWave = _G.coreSpamWave or 1
     _G.coreSpammerConfig = _G.coreSpammerConfig or {}
@@ -17926,7 +17887,7 @@ end)()
             label.Position = UDim2.new(0.5, 0, 1, -65)
             label.AnchorPoint = Vector2.new(0.5, 1)
             label.BackgroundTransparency = 1
-            label.Text = "discord.gg/HEHE"
+            label.Text = "discord.gg/tgKBscxX2s"
             label.TextColor3 = Color3.fromRGB(255, 255, 255)
             label.TextSize = 21
             label.TextStrokeTransparency = 0.7
@@ -17954,7 +17915,7 @@ end)()
             centerLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
             centerLabel.AnchorPoint = Vector2.new(0.5, 0.5)
             centerLabel.BackgroundTransparency = 1
-            centerLabel.Text = "discord.gg/kayhub"
+            centerLabel.Text = "discord.gg/tgKBscxX2s"
             centerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             centerLabel.TextSize = 21
             centerLabel.TextStrokeTransparency = 0.7
@@ -18007,7 +17968,7 @@ end)()
                 })
             end
             if label and label.Parent then
-                label.Text = "discord.gg/kayhub"
+                label.Text = "discord.gg/tgKBscxX2s"
             end
             if centerGrad and centerGrad.Parent then
                 centerGrad.Color = ColorSequence.new({
@@ -18017,7 +17978,7 @@ end)()
                 })
             end
             if centerLabel and centerLabel.Parent then
-                centerLabel.Text = "discord.gg/kayhub"
+                centerLabel.Text = "discord.gg/tgKBscxX2s"
             end
         end
 
@@ -20976,7 +20937,7 @@ end)()
                 M._savedDuel = {}
             end
             pcall(function()
-                if setToggleSaved then setToggleSaved("Kay Hub All Gear", on) end
+                if setToggleSaved then setToggleSaved("Nova Hub All Gear", on) end
             end)
             pcall(function()
                 if Config then
@@ -20990,10 +20951,10 @@ end)()
                     _G._KayUpdateBannerTitle(on)
                 elseif _G._KayBannerTitle and _G._KayBannerTitle.Parent then
                     if on then
-                        _G._KayBannerTitle.Text = "Kay HUB ALL GEAR"
+                        _G._KayBannerTitle.Text = "Nova HUB ALL GEAR"
                         _G._KayBannerTitle.TextSize = 16
                     else
-                        _G._KayBannerTitle.Text = "Kay HUB"
+                        _G._KayBannerTitle.Text = "Nova HUB"
                         _G._KayBannerTitle.TextSize = 20
                     end
                 end
@@ -22312,7 +22273,7 @@ end)()
     end)
 
     Section(Utils.scroll, "Misc")
-    Toggle(Utils.scroll, "Kay Hub All Gear", "OFF = normal · ON = retire gear list + ragdoll actions", function(state)
+    Toggle(Utils.scroll, "Nova Hub All Gear", "OFF = normal · ON = retire gear list + ragdoll actions", function(state)
         if _G.KayHubAllGear and _G.KayHubAllGear.set then
             _G.KayHubAllGear.set(state and true or false)
         end
@@ -22321,10 +22282,10 @@ end)()
         pcall(function()
             local want = false
             if getToggleSaved then
-                want = getToggleSaved("Kay Hub All Gear", false)
+                want = getToggleSaved("Nova Hub All Gear", false)
             elseif Config then
                 want = Config.get("Kay_hub_all_gear", false) == true
-                    or Config.get("toggle:Kay Hub All Gear", false) == true
+                    or Config.get("toggle:Nova Hub All Gear", false) == true
             end
             if want and _G.KayHubAllGear and _G.KayHubAllGear.set then
                 _G.KayHubAllGear.set(true)
@@ -23659,10 +23620,10 @@ end)()
         pcall(function()
             -- TP/Drop Brainrot only restore if All Gear is ON
             local allOn = false
-            if getToggleSaved then allOn = getToggleSaved("Kay Hub All Gear", false)
+            if getToggleSaved then allOn = getToggleSaved("Nova Hub All Gear", false)
             elseif Config then
                 allOn = Config.get("Kay_hub_all_gear", false) == true
-                    or Config.get("toggle:Kay Hub All Gear", false) == true
+                    or Config.get("toggle:Nova Hub All Gear", false) == true
             end
             if not allOn then return end
             task.wait(0.35)
