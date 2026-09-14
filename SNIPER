@@ -1,25 +1,60 @@
 --[[
-    🟡 NOVA SNIPER v3.3 - GOLD SHINE EDITION
-    + Improved Simulator (1-click avatar preview)
-    + Log Panel
-    + Anchor Character
-    + Anti-Kick 7UP style
+    🟡 NOVA SNIPER v4.1 - SKIBIDI UI EDITION
+    - Same engine as v4.0 (anti-kick, anchor, capture, simulator, logs, music)
+    - UI built with Skibidi UI (loadstring)
+    - Simulator resolves user ID on focus lost (no double-click needed)
+    - Red UNLOAD button in Settings (full shutdown)
+    - Key sound on every keystroke (rbxassetid://72826565018765)
+    - Panel stays BEHIND the game's GUIs (DisplayOrder = 1, enforced)
+    - NEW: Rejoin uses RESERVED SERVER (always solo, never public)
+    - Keeps the "NOVA SNIPER" branding
 ]]
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
-local SoundService = game:GetService("SoundService")
+-- =========================================================
+-- SKIBIDI UI (interface library)
+-- =========================================================
+local Skibidi = loadstring(game:HttpGet("https://raw.githubusercontent.com/Pjdojefoejhfuh/ad/refs/heads/main/zz"))()
 
-local player = Players.LocalPlayer
+Skibidi.SetTheme("gold")
+
+-- =========================================================
+-- SERVICES
+-- =========================================================
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local HttpService      = game:GetService("HttpService")
+local SoundService     = game:GetService("SoundService")
+local TeleportService  = game:GetService("TeleportService")
+
+local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- =========================================================
+-- KEYSTROKE SOUND
+-- =========================================================
+local KEY_SOUND_ID = "rbxassetid://72826565018765"
+local keySoundTemplate = Instance.new("Sound")
+keySoundTemplate.Name    = "NovaKeySound"
+keySoundTemplate.SoundId = KEY_SOUND_ID
+keySoundTemplate.Volume  = 0.5
+keySoundTemplate.Parent  = SoundService
+
+local function playKeySound()
+    if unloaded then return end
+    if not keySoundTemplate or not keySoundTemplate.Parent then return end
+    local s = keySoundTemplate:Clone()
+    s.Parent = SoundService
+    s:Play()
+    task.delay(2, function()
+        if s and s.Parent then s:Destroy() end
+    end)
+end
 
 -- =========================================================
 -- ANTI-KICK 7UP STYLE
 -- =========================================================
-
 local SuppliedAntiDie = {
     enabled = false,
     healthConn = nil,
@@ -116,17 +151,19 @@ end)
 -- =========================================================
 -- SETTINGS
 -- =========================================================
-
 local SETTINGS_FILE = "NovaSniper_Settings.json"
 
 local Settings = {
-    autoSubmit = true,
-    submitAfter = 3,
-    theme = "Gold",
-    accentR = 255,
-    accentG = 195,
-    accentB = 50,
+    autoSubmit   = true,
+    submitAfter  = 3,
+    theme        = "Gold",
+    accentR      = 255,
+    accentG      = 195,
+    accentB      = 50,
     shineEnabled = true,
+    simHotkey    = "T",
+    musicVolume  = 0.5,
+    keySound     = true,
 }
 
 local function loadSettings()
@@ -134,13 +171,9 @@ local function loadSettings()
         if isfile and isfile(SETTINGS_FILE) then
             local data = HttpService:JSONDecode(readfile(SETTINGS_FILE))
             if type(data) == "table" then
-                if data.autoSubmit ~= nil then Settings.autoSubmit = data.autoSubmit end
-                if data.submitAfter ~= nil then Settings.submitAfter = data.submitAfter end
-                if data.theme ~= nil then Settings.theme = data.theme end
-                if data.accentR ~= nil then Settings.accentR = data.accentR end
-                if data.accentG ~= nil then Settings.accentG = data.accentG end
-                if data.accentB ~= nil then Settings.accentB = data.accentB end
-                if data.shineEnabled ~= nil then Settings.shineEnabled = data.shineEnabled end
+                for k, v in pairs(data) do
+                    if Settings[k] ~= nil then Settings[k] = v end
+                end
             end
         end
     end)
@@ -159,55 +192,140 @@ loadSettings()
 -- =========================================================
 -- VARIABLES
 -- =========================================================
+local isActive       = true
+local autoSubmit     = Settings.autoSubmit
+local submitAfter    = Settings.submitAfter
 
-local isActive = true
-local autoSubmit = Settings.autoSubmit
-local submitAfter = Settings.submitAfter
+local capturedParts  = {}
+local oldTexts       = {}
+local seenAt         = {}
 
-local capturedParts = {}
-local oldTexts = {}
-local seenAt = {}
+local ALLOWED_GUIS      = { "TopNotification", "TopUI" }
+local DEBOUNCE_SECONDS  = 0.35
 
-local ALLOWED_GUIS = { "TopNotification", "TopUI" }
-local DEBOUNCE_SECONDS = 0.35
+-- Skibidi widget references
+local skPanel, skTabMain, skTabSettings, skTabMusic
+local skStatusLabel, skProgressBar, skToggleActive, skAutoSubmitToggle
+local skCountLabel, skLogModule
+local skSimMessageInput, skSimAvatarInput
+local skAnchorBtn
+local skSimKeybind
+local skMusicVolumeSlider
+local skNowPlayingLabel
+local skKeySoundToggle
 
-local sniperStatus
-local sniperToggle
-local sniperCount
-local sniperDot
-local sniperDotGlow
-local sniperSubmitToggle
+-- Simulator hotkey state
+local simHotkey = Enum.KeyCode[Settings.simHotkey] or Enum.KeyCode.T
 
-local progressBar
-local progressFill
-local resetBtn
-
-local simInput
-local simAvatarInput
-local simAvatarPreview
-local simBtn
-local simPanel
-local simToggleBtn
-local simPanelOpen = false
-local simPreviewUserId = nil
+-- Cache de l'UserID du pseudo entré dans le simulateur
+local simCachedUserId = nil
+local simCachedName   = nil
 
 local activeAnnouncement = nil
-local mainFrame = nil
-local mainGui = nil
-local settingsPanel = nil
-local settingsOpen = false
 
-local logScroll = nil
-local logLayout = nil
-local logEntries = {}
-local MAX_LOGS = 60
+-- =========================================================
+-- UNLOAD
+-- =========================================================
+local unloaded = false
+local unloadConnections = {}
 
-local themeObjects = { strokes = {}, textColors = {}, grads = {} }
+local function trackConn(conn)
+    table.insert(unloadConnections, conn)
+    return conn
+end
+
+-- =========================================================
+-- MUSIC
+-- =========================================================
+local Songs = {
+    { Name = "Chill",         Id = "rbxassetid://139132289200391" },
+    { Name = "Tycoon Music",  Id = "rbxassetid://114376757380093" },
+    { Name = "Ambiance",      Id = "rbxassetid://91581556956539"  },
+    { Name = "Phonk",         Id = "rbxassetid://139959590610806" },
+}
+
+local musicState = {
+    sound     = nil,
+    playing   = false,
+    paused    = false,
+    currentIdx = nil,
+    volume    = Settings.musicVolume or 0.5,
+}
+
+local function stopMusic()
+    if musicState.sound then
+        pcall(function() musicState.sound:Stop() end)
+        pcall(function() musicState.sound:Destroy() end)
+        musicState.sound = nil
+    end
+    musicState.playing = false
+    musicState.paused  = false
+    musicState.currentIdx = nil
+    if skNowPlayingLabel then
+        pcall(function() skNowPlayingLabel.SetText("Aucune musique") end)
+    end
+end
+
+local function playMusic(idx)
+    local song = Songs[idx]
+    if not song then return end
+
+    if musicState.sound then
+        pcall(function() musicState.sound:Stop() end)
+        pcall(function() musicState.sound:Destroy() end)
+        musicState.sound = nil
+    end
+
+    local snd = Instance.new("Sound")
+    snd.Name        = "NovaSniperMusic"
+    snd.SoundId     = song.Id
+    snd.Looped      = true
+    snd.Volume      = musicState.volume
+    snd.Parent      = SoundService
+
+    musicState.sound      = snd
+    musicState.playing    = true
+    musicState.paused     = false
+    musicState.currentIdx = idx
+
+    snd:Play()
+
+    if skNowPlayingLabel then
+        pcall(function() skNowPlayingLabel.SetText("▶ " .. song.Name) end)
+    end
+
+    addLog("♪ Playing " .. song.Name, C.Cyan)
+end
+
+local function togglePlayPause()
+    if not musicState.sound then return end
+    if musicState.paused then
+        musicState.sound:Resume()
+        musicState.paused = false
+        if skNowPlayingLabel then
+            pcall(function() skNowPlayingLabel.SetText("▶ " .. Songs[musicState.currentIdx].Name) end)
+        end
+    else
+        musicState.sound:Pause()
+        musicState.paused = true
+        if skNowPlayingLabel then
+            pcall(function() skNowPlayingLabel.SetText("⏸ " .. Songs[musicState.currentIdx].Name) end)
+        end
+    end
+end
+
+local function setVolume(v)
+    musicState.volume = math.clamp(v / 100, 0, 1)
+    Settings.musicVolume = musicState.volume
+    saveSettings()
+    if musicState.sound then
+        musicState.sound.Volume = musicState.volume
+    end
+end
 
 -- =========================================================
 -- THEME
 -- =========================================================
-
 local ThemePresets = {
     Gold   = Color3.fromRGB(255, 195, 50),
     Purple = Color3.fromRGB(180, 100, 255),
@@ -226,66 +344,26 @@ local function setAccent(c)
     Settings.accentG = math.floor(c.G * 255 + 0.5)
     Settings.accentB = math.floor(c.B * 255 + 0.5)
     saveSettings()
-    local accent = getAccent()
-    for _, s in ipairs(themeObjects.strokes) do
-        pcall(function() s.Color = accent end)
-    end
-    for _, t in ipairs(themeObjects.textColors) do
-        pcall(function() t.TextColor3 = accent end)
-    end
-    for _, g in ipairs(themeObjects.grads) do
-        pcall(function()
-            g.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, accent),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-                ColorSequenceKeypoint.new(1, accent),
-            })
-        end)
-    end
-end
-
-local function registerStroke(s)
-    if not s then return s end
-    table.insert(themeObjects.strokes, s)
-    s.Color = getAccent()
-    return s
-end
-
-local function registerText(t)
-    if not t then return t end
-    table.insert(themeObjects.textColors, t)
-    t.TextColor3 = getAccent()
-    return t
-end
-
-local function registerGrad(g)
-    if not g then return g end
-    table.insert(themeObjects.grads, g)
-    local accent = getAccent()
-    g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, accent),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-        ColorSequenceKeypoint.new(1, accent),
-    })
-    return g
+    Skibidi.Theme.Accent    = c
+    Skibidi.Theme.AccentSec = Color3.new(
+        math.min(c.R + 0.15, 1),
+        math.min(c.G + 0.15, 1),
+        math.min(c.B + 0.15, 1))
 end
 
 -- =========================================================
--- COLORS
+-- HELPERS
 -- =========================================================
-
 local C = {
     Void0 = Color3.fromRGB(6, 5, 10),
     Void1 = Color3.fromRGB(12, 10, 16),
     Void2 = Color3.fromRGB(18, 15, 24),
     Void3 = Color3.fromRGB(28, 24, 36),
-
     White = Color3.fromRGB(245, 240, 255),
     Silver1 = Color3.fromRGB(210, 200, 220),
     Silver2 = Color3.fromRGB(160, 150, 175),
     Silver3 = Color3.fromRGB(110, 100, 130),
     Silver4 = Color3.fromRGB(55, 45, 70),
-
     Green = Color3.fromRGB(60, 230, 100),
     Red = Color3.fromRGB(255, 60, 80),
     Gold = Color3.fromRGB(255, 195, 50),
@@ -295,239 +373,46 @@ local C = {
     Orange = Color3.fromRGB(255, 150, 60),
 }
 
--- =========================================================
--- HELPERS
--- =========================================================
-
-local function createCorner(parent, radius)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, radius or 10)
-    corner.Parent = parent
-    return corner
-end
-
-local function createStroke(parent, color, thickness, transparency)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or C.White
-    stroke.Thickness = thickness or 1
-    stroke.Transparency = transparency or 0
-    stroke.Parent = parent
-    return stroke
-end
-
-local function pulse(target, properties, duration)
-    return TweenService:Create(
-        target,
-        TweenInfo.new(duration or 1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-        properties
-    )
-end
-
-local function createShadow(parent, radius)
-    local shadow = Instance.new("Frame")
-    shadow.Size = UDim2.new(1, 24, 1, 24)
-    shadow.Position = UDim2.new(0, -12, 0, -8)
-    shadow.BackgroundColor3 = Color3.new(0, 0, 0)
-    shadow.BackgroundTransparency = 0.5
-    shadow.BorderSizePixel = 0
-    shadow.ZIndex = -1
-    shadow.Parent = parent
-    createCorner(shadow, (radius or 18) + 6)
-    return shadow
-end
-
-local function addShineOverlay(parent)
-    local shine = Instance.new("Frame")
-    shine.Name = "ShineOverlay"
-    shine.Size = UDim2.new(0, 40, 1, 0)
-    shine.Position = UDim2.new(-0.3, 0, 0, 0)
-    shine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    shine.BackgroundTransparency = 0.9
-    shine.BorderSizePixel = 0
-    shine.ZIndex = 100
-    shine.Parent = parent
-    createCorner(shine, 4)
-
-    local grad = Instance.new("UIGradient")
-    grad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-    grad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.5, 0.4),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    grad.Parent = shine
-
-    task.spawn(function()
-        while shine and shine.Parent do
-            if Settings.shineEnabled then
-                shine.Position = UDim2.new(-0.3, 0, 0, 0)
-                local t = TweenService:Create(shine, TweenInfo.new(1.8, Enum.EasingStyle.Linear), { Position = UDim2.new(1.2, 0, 0, 0) })
-                t:Play()
-                t.Completed:Wait()
-                task.wait(2.5)
-            else
-                task.wait(0.5)
-            end
-        end
+local function playBloop()
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://12221967"
+    sound.Volume = 0.55
+    sound.PlaybackSpeed = 1.15
+    sound.Parent = SoundService
+    sound:Play()
+    task.delay(1, function()
+        if sound then sound:Destroy() end
     end)
-    return shine
-end
-
-local function createMarbleOverlay(parent, alpha, veinCount)
-    local canvas = Instance.new("Frame")
-    canvas.Size = UDim2.new(1, 0, 1, 0)
-    canvas.BackgroundTransparency = 1
-    canvas.BorderSizePixel = 0
-    canvas.ZIndex = 0
-    canvas.ClipsDescendants = true
-    canvas.Parent = parent
-    createCorner(canvas, 18)
-
-    for i = 1, veinCount or 10 do
-        local vein = Instance.new("Frame")
-        vein.Size = UDim2.new(0, math.random(50, 140), 0, math.random(2, 5))
-        vein.Position = UDim2.new(math.random() * 0.7, 0, math.random() * 0.8, 0)
-        vein.Rotation = math.random(-35, 35)
-
-        if i % 3 == 0 then vein.BackgroundColor3 = C.GoldDeep
-        elseif i % 3 == 1 then vein.BackgroundColor3 = C.Gold
-        else vein.BackgroundColor3 = C.GoldBright end
-
-        vein.BackgroundTransparency = (alpha or 0.85) + math.random() * 0.06
-        vein.BorderSizePixel = 0
-        vein.ZIndex = 0
-        vein.Parent = canvas
-        createCorner(vein, math.random(2, 4))
-    end
-    return canvas
-end
-
-local function createAnimatedBorder(parent, radius)
-    local border = Instance.new("Frame")
-    border.Size = UDim2.new(1, 5, 1, 5)
-    border.Position = UDim2.new(0, -2.5, 0, -2.5)
-    border.BackgroundTransparency = 1
-    border.BorderSizePixel = 0
-    border.ZIndex = 3
-    border.Parent = parent
-
-    local grad = Instance.new("UIGradient")
-    grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, getAccent()),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, getAccent()),
-    })
-    grad.Rotation = 45
-    grad.Parent = border
-    registerGrad(grad)
-
-    TweenService:Create(grad, TweenInfo.new(10, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = 405 }):Play()
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = getAccent()
-    stroke.Transparency = 0.6
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = border
-    registerStroke(stroke)
-
-    createCorner(border, radius or 18)
-    return border
-end
-
-local function createDiamondIcon(parent, x, y, size, letter)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, size, 0, size)
-    frame.Position = UDim2.new(0, x, 0, y)
-    frame.BackgroundColor3 = C.Void2
-    frame.BackgroundTransparency = 0.2
-    frame.BorderSizePixel = 0
-    frame.Rotation = 45
-    frame.ZIndex = 10
-    frame.Parent = parent
-    createCorner(frame, size / 5)
-    registerStroke(createStroke(frame, getAccent(), 1.5, 0.1))
-
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.BackgroundTransparency = 1
-    text.Text = letter or "N"
-    text.TextColor3 = C.White
-    text.Font = Enum.Font.GothamBlack
-    text.TextSize = size * 0.55
-    text.Rotation = -45
-    text.ZIndex = 11
-    text.Parent = frame
-    return frame
 end
 
 -- =========================================================
 -- LOG SYSTEM
 -- =========================================================
-
 local function getTimestamp()
     local t = os.date("*t")
     return string.format("[%02d:%02d:%02d]", t.hour, t.min, t.sec)
 end
 
 local function addLog(text, color)
-    if not logScroll or not logLayout then return end
     if not text or text == "" then return end
-
-    if #logEntries >= MAX_LOGS then
-        local old = table.remove(logEntries, 1)
-        if old and old.Parent then
-            old:Destroy()
-        end
+    if skLogModule then
+        skLogModule.Log(text, color)
+    else
+        print(getTimestamp(), text)
     end
-
-    local entry = Instance.new("TextLabel")
-    entry.Size = UDim2.new(1, -8, 0, 14)
-    entry.BackgroundTransparency = 1
-    entry.Text = "  " .. getTimestamp() .. " " .. text
-    entry.TextColor3 = color or C.Silver1
-    entry.Font = Enum.Font.Code
-    entry.TextSize = 10
-    entry.TextXAlignment = Enum.TextXAlignment.Left
-    entry.TextYAlignment = Enum.TextYAlignment.Center
-    entry.TextTruncate = Enum.TextTruncate.AtEnd
-    entry.ZIndex = 5
-    entry.Parent = logScroll
-
-    table.insert(logEntries, entry)
-
-    entry.TextTransparency = 1
-    TweenService:Create(entry, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
-
-    task.defer(function()
-        if logScroll and logLayout then
-            logScroll.CanvasSize = UDim2.new(0, 0, 0, logLayout.AbsoluteContentSize.Y + 8)
-            logScroll.CanvasPosition = Vector2.new(0, math.max(0, logScroll.CanvasSize.Y.Offset - logScroll.AbsoluteWindowSize.Y))
-        end
-    end)
 end
 
 local function clearLogs()
-    for _, e in ipairs(logEntries) do
-        pcall(function() e:Destroy() end)
+    if skLogModule then
+        skLogModule.Clear()
+        addLog("» Logs cleared", C.Silver3)
     end
-    logEntries = {}
-    if logScroll then
-        logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    end
-    addLog("» Logs cleared", C.Silver3)
 end
 
 -- =========================================================
 -- ANCHOR CHARACTER
 -- =========================================================
-
-local anchorState = {
-    active = false,
-    conn = nil,
-    savedCFrame = nil,
-    savedPos = nil,
-}
+local anchorState = { active = false, conn = nil, savedCFrame = nil, savedPos = nil }
 
 local function anchorCharacter()
     if anchorState.active then
@@ -543,18 +428,14 @@ local function anchorCharacter()
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hrp then
                 hrp.Anchored = false
-                if anchorState.savedCFrame then
-                    hrp.CFrame = anchorState.savedCFrame
-                end
-                hrp.AssemblyLinearVelocity = Vector3.zero
+                if anchorState.savedCFrame then hrp.CFrame = anchorState.savedCFrame end
+                hrp.AssemblyLinearVelocity  = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
             end
-            if hum then
-                pcall(function() hum.PlatformStand = false end)
-            end
+            if hum then pcall(function() hum.PlatformStand = false end) end
         end
         anchorState.savedCFrame = nil
-        anchorState.savedPos = nil
+        anchorState.savedPos    = nil
         return false
     else
         local char = player.Character
@@ -563,11 +444,11 @@ local function anchorCharacter()
         if not hrp then return false end
 
         anchorState.savedCFrame = hrp.CFrame
-        anchorState.savedPos = hrp.Position
-        anchorState.active = true
+        anchorState.savedPos    = hrp.Position
+        anchorState.active      = true
 
         hrp.Anchored = true
-        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyLinearVelocity  = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
 
         anchorState.conn = RunService.Heartbeat:Connect(function()
@@ -578,198 +459,28 @@ local function anchorCharacter()
             if root then
                 pcall(function()
                     root.Anchored = true
-                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyLinearVelocity  = Vector3.zero
                     root.AssemblyAngularVelocity = Vector3.zero
                 end)
             end
         end)
-
         return true
     end
 end
 
-local function isCharacterAnchored()
-    return anchorState.active
-end
+local function isCharacterAnchored() return anchorState.active end
 
-player.CharacterAdded:Connect(function()
-    if anchorState.conn then
-        pcall(function() anchorState.conn:Disconnect() end)
-        anchorState.conn = nil
-    end
+trackConn(player.CharacterAdded:Connect(function()
+    if anchorState.conn then pcall(function() anchorState.conn:Disconnect() end) end
+    anchorState.conn = nil
     anchorState.active = false
     anchorState.savedCFrame = nil
     anchorState.savedPos = nil
-end)
+end))
 
 -- =========================================================
--- LOADING SCREEN
+-- ANNOUNCEMENT
 -- =========================================================
-
-local function createLoadingScreen()
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "Loading_" .. math.random(1000, 9999)
-    sg.IgnoreGuiInset = true
-    sg.ResetOnSpawn = false
-    sg.DisplayOrder = 999
-    sg.Parent = playerGui
-
-    local background = Instance.new("Frame")
-    background.Size = UDim2.new(1, 0, 1, 0)
-    background.BackgroundColor3 = C.Void0
-    background.BorderSizePixel = 0
-    background.Parent = sg
-
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.new(0, 360, 0, 360)
-    glow.Position = UDim2.new(0.5, -180, 0.5, -180)
-    glow.BackgroundColor3 = getAccent()
-    glow.BackgroundTransparency = 0.92
-    glow.BorderSizePixel = 0
-    glow.Parent = background
-    createCorner(glow, 180)
-
-    pulse(glow, {
-        BackgroundTransparency = 0.96,
-        Size = UDim2.new(0, 420, 0, 420),
-        Position = UDim2.new(0.5, -210, 0.5, -210)
-    }, 2.2):Play()
-
-    local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.new(1, 0, 0, 50)
-    logo.Position = UDim2.new(0, 0, 0.5, -120)
-    logo.BackgroundTransparency = 1
-    logo.Text = "NOVA SNIPER"
-    logo.TextColor3 = C.Gold
-    logo.Font = Enum.Font.GothamBlack
-    logo.TextSize = 30
-    logo.TextTransparency = 1
-    logo.Parent = background
-
-    local logoGrad = Instance.new("UIGradient")
-    logoGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.GoldDeep),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, C.GoldDeep),
-    })
-    logoGrad.Parent = logo
-    registerGrad(logoGrad)
-
-    task.spawn(function()
-        while logoGrad and logoGrad.Parent do
-            TweenService:Create(logoGrad, TweenInfo.new(3, Enum.EasingStyle.Linear), { Rotation = 360 }):Play()
-            task.wait(3)
-        end
-    end)
-
-    local loading = Instance.new("TextLabel")
-    loading.Size = UDim2.new(1, 0, 0, 35)
-    loading.Position = UDim2.new(0, 0, 0.5, -65)
-    loading.BackgroundTransparency = 1
-    loading.Text = "Loading..."
-    loading.TextColor3 = C.Silver1
-    loading.Font = Enum.Font.GothamMedium
-    loading.TextSize = 17
-    loading.TextTransparency = 1
-    loading.Parent = background
-
-    local avatar = Instance.new("ImageLabel")
-    avatar.Size = UDim2.new(0, 58, 0, 58)
-    avatar.Position = UDim2.new(0.5, -29, 0.5, -10)
-    avatar.BackgroundColor3 = C.Void2
-    avatar.BackgroundTransparency = 0.2
-    avatar.BorderSizePixel = 0
-    avatar.ImageTransparency = 1
-    avatar.Parent = background
-    createCorner(avatar, 29)
-    registerStroke(createStroke(avatar, getAccent(), 2, 0.15))
-
-    local thumb
-    pcall(function()
-        thumb = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
-    end)
-    if thumb then avatar.Image = thumb end
-
-    local welcome = Instance.new("TextLabel")
-    welcome.Size = UDim2.new(1, 0, 0, 35)
-    welcome.Position = UDim2.new(0, 0, 0.5, 58)
-    welcome.BackgroundTransparency = 1
-    welcome.Text = "Welcome @" .. player.Name
-    welcome.TextColor3 = C.White
-    welcome.Font = Enum.Font.GothamBold
-    welcome.TextSize = 16
-    welcome.TextTransparency = 1
-    welcome.Parent = background
-
-    local progress = Instance.new("Frame")
-    progress.Size = UDim2.new(0, 220, 0, 3)
-    progress.Position = UDim2.new(0.5, -110, 0.5, 105)
-    progress.BackgroundColor3 = C.Void3
-    progress.BorderSizePixel = 0
-    progress.Parent = background
-    createCorner(progress, 10)
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new(0, 0, 1, 0)
-    fill.BackgroundColor3 = C.Gold
-    fill.BorderSizePixel = 0
-    fill.Parent = progress
-    createCorner(fill, 10)
-
-    local grad = Instance.new("UIGradient")
-    grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.GoldDeep),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, C.Gold),
-    })
-    grad.Parent = fill
-    registerGrad(grad)
-
-    TweenService:Create(logo, TweenInfo.new(0.5, Enum.EasingStyle.Quad), { TextTransparency = 0 }):Play()
-    task.wait(0.15)
-    TweenService:Create(loading, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { TextTransparency = 0 }):Play()
-    task.wait(0.15)
-    TweenService:Create(avatar, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { ImageTransparency = 0 }):Play()
-    task.wait(0.1)
-    TweenService:Create(welcome, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { TextTransparency = 0 }):Play()
-    TweenService:Create(fill, TweenInfo.new(1.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Size = UDim2.new(1, 0, 1, 0) }):Play()
-    task.wait(1.4)
-
-    for _, obj in ipairs({ logo, loading, avatar, welcome, progress }) do
-        if obj:IsA("TextLabel") then
-            TweenService:Create(obj, TweenInfo.new(0.35), { TextTransparency = 1 }):Play()
-        elseif obj:IsA("ImageLabel") then
-            TweenService:Create(obj, TweenInfo.new(0.35), { ImageTransparency = 1 }):Play()
-        else
-            TweenService:Create(obj, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
-        end
-    end
-
-    TweenService:Create(background, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
-    task.wait(0.45)
-    sg:Destroy()
-end
-
--- =========================================================
--- BLOOP
--- =========================================================
-
-local function playBloop()
-    local sound = Instance.new("Sound")
-    sound.SoundId = "rbxassetid://12221967"
-    sound.Volume = 0.55
-    sound.PlaybackSpeed = 1.15
-    sound.Parent = SoundService
-    sound:Play()
-    task.delay(1, function()
-        if sound then sound:Destroy() end
-    end)
-end
-
--- =========================================================
--- AVATAR / USER
--- =========================================================
-
 local function getAvatar(userId)
     local image
     pcall(function()
@@ -788,32 +499,22 @@ end
 
 local function findUserIdFromText(text)
     if not text or text == "" then return player.UserId end
-    text = text:gsub("^@", "")
-    text = text:gsub("%s+", "")
+    text = text:gsub("^@", ""):gsub("%s+", "")
     if text == "" then return player.UserId end
-    if string.lower(text) == string.lower(player.Name) then
-        return player.UserId
-    end
-    -- Cherche dans les joueurs actuels d'abord
+    if string.lower(text) == string.lower(player.Name) then return player.UserId end
     for _, p in ipairs(Players:GetPlayers()) do
-        if string.lower(p.Name) == string.lower(text) or string.lower(p.DisplayName) == string.lower(text) then
+        if string.lower(p.Name) == string.lower(text)
+        or string.lower(p.DisplayName) == string.lower(text) then
             return p.UserId
         end
     end
     local found
-    pcall(function()
-        found = Players:GetUserIdFromNameAsync(text)
-    end)
+    pcall(function() found = Players:GetUserIdFromNameAsync(text) end)
     return found or player.UserId
 end
 
--- =========================================================
--- ANNOUNCEMENT
--- =========================================================
-
 local function showAnnouncement(message, userId, username)
     if not message or message == "" then return end
-
     if activeAnnouncement then
         pcall(function() activeAnnouncement:Destroy() end)
         activeAnnouncement = nil
@@ -830,7 +531,6 @@ local function showAnnouncement(message, userId, username)
     end
 
     local container = Instance.new("Frame")
-    container.Name = "Announcement"
     container.Size = UDim2.new(0, 650, 0, 80)
     container.AnchorPoint = Vector2.new(0.5, 0)
     container.Position = UDim2.new(0.5, 0, 0, -100)
@@ -843,19 +543,17 @@ local function showAnnouncement(message, userId, username)
     avatar.Size = UDim2.new(0, 52, 0, 52)
     avatar.Position = UDim2.new(0, 8, 0.5, -26)
     avatar.BackgroundTransparency = 1
-    avatar.BorderSizePixel = 0
     avatar.Image = getAvatar(userId) or ""
     avatar.ImageTransparency = 1
     avatar.Parent = container
-    createCorner(avatar, 26)
-    createStroke(avatar, Color3.fromRGB(0, 0, 0), 2, 0)
+    local ac = Instance.new("UICorner"); ac.CornerRadius = UDim.new(1,0); ac.Parent = avatar
 
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Size = UDim2.new(0, 500, 0, 20)
     nameLabel.Position = UDim2.new(0, 68, 0, 9)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = username or "Unknown"
-    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextColor3 = Color3.new(1,1,1)
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.TextSize = 13
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -867,7 +565,7 @@ local function showAnnouncement(message, userId, username)
     messageLabel.Position = UDim2.new(0, 68, 0, 28)
     messageLabel.BackgroundTransparency = 1
     messageLabel.Text = message
-    messageLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    messageLabel.TextColor3 = Color3.new(1,1,1)
     messageLabel.Font = Enum.Font.GothamBlack
     messageLabel.TextSize = 22
     messageLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -875,33 +573,27 @@ local function showAnnouncement(message, userId, username)
     messageLabel.TextTransparency = 1
     messageLabel.Parent = container
 
-    local messageStroke = Instance.new("UIStroke")
-    messageStroke.Thickness = 3
-    messageStroke.Color = Color3.fromRGB(0, 0, 0)
-    messageStroke.Transparency = 0
-    messageStroke.LineJoinMode = Enum.LineJoinMode.Round
-    messageStroke.Parent = messageLabel
-
-    local nameStroke = Instance.new("UIStroke")
-    nameStroke.Thickness = 2
-    nameStroke.Color = Color3.fromRGB(0, 0, 0)
-    nameStroke.Transparency = 0
-    nameStroke.Parent = nameLabel
-
-    container.Position = UDim2.new(0.5, 0, 0, -90)
-    container.Size = UDim2.new(0, 560, 0, 65)
+    for _, obj in ipairs({ messageLabel, nameLabel }) do
+        local st = Instance.new("UIStroke")
+        st.Thickness = obj == messageLabel and 3 or 2
+        st.Color = Color3.new(0,0,0)
+        st.Parent = obj
+    end
 
     playBloop()
 
-    TweenService:Create(container, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 0, 35) }):Play()
-    task.wait(0.05)
-    TweenService:Create(avatar, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { ImageTransparency = 0 }):Play()
+    TweenService:Create(container, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        { Position = UDim2.new(0.5, 0, 0, 35) }):Play()
+    TweenService:Create(avatar, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        { ImageTransparency = 0 }):Play()
     TweenService:Create(nameLabel, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
-    TweenService:Create(messageLabel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+    TweenService:Create(messageLabel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        { TextTransparency = 0 }):Play()
 
     task.delay(3.2, function()
         if not container.Parent then return end
-        TweenService:Create(container, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0.5, 0, 0, -90) }):Play()
+        TweenService:Create(container, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            { Position = UDim2.new(0.5, 0, 0, -90) }):Play()
         TweenService:Create(avatar, TweenInfo.new(0.25), { ImageTransparency = 1 }):Play()
         TweenService:Create(nameLabel, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
         TweenService:Create(messageLabel, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
@@ -914,11 +606,9 @@ end
 -- =========================================================
 -- CODES GUI
 -- =========================================================
-
 local function openCodesGui()
     local codesGui = playerGui:FindFirstChild("Codes")
     if codesGui and codesGui.Enabled then return true end
-
     local leftCenter = playerGui:FindFirstChild("LeftCenter")
     if leftCenter then
         for _, btn in pairs(leftCenter:GetDescendants()) do
@@ -935,19 +625,13 @@ end
 local function findTextBox()
     local codesGui = playerGui:FindFirstChild("Codes")
     if not codesGui then return nil end
-
     local codeRedeem = codesGui:FindFirstChild("CodeRedeem")
     if codeRedeem then
         local tb = codeRedeem:FindFirstChild("TextBox")
-        if tb and tb:IsA("TextBox") and tb.Visible then
-            return tb
-        end
+        if tb and tb:IsA("TextBox") and tb.Visible then return tb end
     end
-
     for _, el in pairs(codesGui:GetDescendants()) do
-        if el:IsA("TextBox") and el.Visible then
-            return el
-        end
+        if el:IsA("TextBox") and el.Visible then return el end
     end
     return nil
 end
@@ -955,7 +639,6 @@ end
 -- =========================================================
 -- TEXT
 -- =========================================================
-
 local function cleanText(raw)
     if not raw then return "" end
     local text = tostring(raw)
@@ -967,32 +650,24 @@ end
 
 local function isDebounced(text)
     local last = seenAt[text]
-    if last and os.clock() - last < DEBOUNCE_SECONDS then
-        return true
-    end
+    if last and os.clock() - last < DEBOUNCE_SECONDS then return true end
     return false
 end
 
 -- =========================================================
--- PROGRESS
+-- PROGRESS / RESET
 -- =========================================================
-
 local function updateProgressBar(count, total)
-    if not progressFill then return end
-    local pct = math.clamp(count / math.max(total, 1), 0, 1)
-    TweenService:Create(
-        progressFill,
-        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        { Size = UDim2.new(pct, 0, 1, 0) }
-    ):Play()
+    if not skProgressBar then return end
+    local pct = math.clamp(count / math.max(total, 1), 0, 1) * 100
+    skProgressBar.Update(pct)
 end
 
 local function resetCapture()
     capturedParts = {}
     updateProgressBar(0, submitAfter)
-    if isActive and sniperStatus then
-        sniperStatus.Text = "awaiting codes..."
-        sniperStatus.TextColor3 = getAccent()
+    if isActive and skStatusLabel then
+        skStatusLabel.SetText("awaiting codes...")
     end
     addLog("» Capture reset", C.Silver3)
 end
@@ -1000,7 +675,6 @@ end
 -- =========================================================
 -- CAPTURE
 -- =========================================================
-
 local function handleNewText(text, isSimulated)
     if not isActive then return end
 
@@ -1015,12 +689,11 @@ local function handleNewText(text, isSimulated)
     local fullText = table.concat(capturedParts)
     local count = #capturedParts
 
-    sniperStatus.Text = count .. "/" .. submitAfter .. ": " .. fullText
-    sniperStatus.TextColor3 = getAccent()
+    if skStatusLabel then
+        skStatusLabel.SetText(count .. "/" .. submitAfter .. ": " .. fullText)
+    end
     updateProgressBar(count, submitAfter)
-
     addLog("◈ DETECTED \"" .. text .. "\"  (" .. count .. "/" .. submitAfter .. ")", C.GoldBright)
-
     showAnnouncement(text, player.UserId, player.DisplayName)
 
     local box = findTextBox()
@@ -1034,10 +707,8 @@ local function handleNewText(text, isSimulated)
 
     if count >= submitAfter and autoSubmit then
         capturedParts = {}
-        sniperStatus.Text = "redeeming..."
-        sniperStatus.TextColor3 = C.Cyan
+        if skStatusLabel then skStatusLabel.SetText("redeeming...") end
         updateProgressBar(0, submitAfter)
-
         addLog("⏵ Submitting \"" .. fullText .. "\"...", C.Cyan)
 
         task.spawn(function()
@@ -1046,11 +717,11 @@ local function handleNewText(text, isSimulated)
             local codesGui = playerGui:FindFirstChild("Codes")
             if codesGui then
                 for _, btn in pairs(codesGui:GetDescendants()) do
-                    if btn:IsA("TextButton") and (btn.Text == "Submit" or btn.Text == "Redeem" or btn.Text == "Redeem Code") then
-                        pcall(function()
-                            btn:Activate()
-                            ok = true
-                        end)
+                    if btn:IsA("TextButton")
+                    and (btn.Text == "Submit"
+                      or btn.Text == "Redeem"
+                      or btn.Text == "Redeem Code") then
+                        pcall(function() btn:Activate(); ok = true end)
                         break
                     end
                 end
@@ -1058,43 +729,38 @@ local function handleNewText(text, isSimulated)
             if not ok then
                 pcall(function()
                     local vim = game:GetService("VirtualInputManager")
-                    vim:SendKeyEvent(true, Enum.KeyCode.Return, false, nil)
+                    vim:SendKeyEvent(true,  Enum.KeyCode.Return, false, nil)
                     vim:SendKeyEvent(false, Enum.KeyCode.Return, false, nil)
                 end)
             end
 
-            sniperStatus.Text = ok and "redeemed!" or "failed - try reset"
-            sniperStatus.TextColor3 = ok and C.Green or C.Red
-
-            if ok then
-                addLog("✔ REDEEMED \"" .. fullText .. "\"", C.Green)
-            else
-                addLog("✖ FAILED \"" .. fullText .. "\"", C.Red)
+            if skStatusLabel then
+                skStatusLabel.SetText(ok and "redeemed!" or "failed - try reset")
             end
+            addLog(ok and ("✔ REDEEMED \"" .. fullText .. "\"")
+                     or ("✖ FAILED \"" .. fullText .. "\""),
+                   ok and C.Green or C.Red)
 
             task.wait(0.6 + math.random() * 0.2)
-            if isActive then
-                sniperStatus.Text = "awaiting codes..."
-                sniperStatus.TextColor3 = getAccent()
+            if isActive and skStatusLabel then
+                skStatusLabel.SetText("awaiting codes...")
             end
         end)
     end
 end
 
 -- =========================================================
--- SIMULATOR (avec preview instantané)
+-- SIMULATOR
 -- =========================================================
-
-local function simulateAnnouncement(message, avatarUser)
+local function simulateAnnouncement(message, avatarUser, directUserId)
     if not message or message == "" then return end
 
-    local userId = findUserIdFromText(avatarUser)
+    local userId = directUserId or findUserIdFromText(avatarUser)
     local username = avatarUser
     if not username or username == "" then
         username = player.DisplayName
     else
-        username = username:gsub("^@", "")
-        username = username:gsub("%s+", "")
+        username = username:gsub("^@", ""):gsub("%s+", "")
     end
 
     addLog("⚗ TEST \"" .. message .. "\"", C.Orange)
@@ -1102,1062 +768,483 @@ local function simulateAnnouncement(message, avatarUser)
     handleNewText(message, true)
 end
 
--- =========================================================
--- SETTINGS PANEL
--- =========================================================
+local function resolveSimUser()
+    local raw = skSimAvatarInput and skSimAvatarInput.GetValue() or ""
+    raw = (raw or ""):gsub("^@", ""):gsub("%s+", "")
 
-local function createSettingsPanel(parent)
-    local panel = Instance.new("Frame")
-    panel.Name = "SettingsPanel"
-    panel.Size = UDim2.new(1, 0, 1, 0)
-    panel.Position = UDim2.new(0, 0, 0, 0)
-    panel.BackgroundColor3 = C.Void1
-    panel.BackgroundTransparency = 0.02
-    panel.BorderSizePixel = 0
-    panel.ClipsDescendants = true
-    panel.Visible = false
-    panel.ZIndex = 50
-    panel.Parent = parent
-    createCorner(panel, 18)
+    if raw == "" then
+        return player.UserId, player.DisplayName
+    end
 
-    local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 34)
-    header.BackgroundColor3 = C.Void2
-    header.BackgroundTransparency = 0.1
-    header.BorderSizePixel = 0
-    header.ZIndex = 51
-    header.Parent = panel
-    createCorner(header, 14)
+    if simCachedName == raw and simCachedUserId then
+        return simCachedUserId, raw
+    end
 
-    local headerFix = Instance.new("Frame")
-    headerFix.Size = UDim2.new(1, 0, 0, 12)
-    headerFix.Position = UDim2.new(0, 0, 1, -12)
-    headerFix.BackgroundColor3 = C.Void2
-    headerFix.BackgroundTransparency = 0.1
-    headerFix.BorderSizePixel = 0
-    headerFix.ZIndex = 51
-    headerFix.Parent = header
-
-    local headerTitle = Instance.new("TextLabel")
-    headerTitle.Size = UDim2.new(1, -50, 1, 0)
-    headerTitle.Position = UDim2.new(0, 14, 0, 0)
-    headerTitle.BackgroundTransparency = 1
-    headerTitle.Text = "⚙  SETTINGS"
-    headerTitle.TextColor3 = getAccent()
-    headerTitle.Font = Enum.Font.GothamBlack
-    headerTitle.TextSize = 13
-    headerTitle.TextXAlignment = Enum.TextXAlignment.Left
-    headerTitle.ZIndex = 52
-    headerTitle.Parent = header
-    registerText(headerTitle)
-
-    local backBtn = Instance.new("TextButton")
-    backBtn.Size = UDim2.new(0, 26, 0, 26)
-    backBtn.Position = UDim2.new(1, -32, 0, 4)
-    backBtn.BackgroundColor3 = C.Void3
-    backBtn.BackgroundTransparency = 0.3
-    backBtn.BorderSizePixel = 0
-    backBtn.Text = "←"
-    backBtn.TextColor3 = C.White
-    backBtn.Font = Enum.Font.GothamBold
-    backBtn.TextSize = 14
-    backBtn.AutoButtonColor = false
-    backBtn.ZIndex = 52
-    backBtn.Parent = header
-    createCorner(backBtn, 8)
-
-    local presetsLabel = Instance.new("TextLabel")
-    presetsLabel.Size = UDim2.new(1, -20, 0, 16)
-    presetsLabel.Position = UDim2.new(0, 10, 0, 44)
-    presetsLabel.BackgroundTransparency = 1
-    presetsLabel.Text = "ACCENT COLOR"
-    presetsLabel.TextColor3 = C.Silver2
-    presetsLabel.Font = Enum.Font.GothamBold
-    presetsLabel.TextSize = 9
-    presetsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    presetsLabel.ZIndex = 52
-    presetsLabel.Parent = panel
-
-    local presetsRow = Instance.new("Frame")
-    presetsRow.Size = UDim2.new(1, -20, 0, 30)
-    presetsRow.Position = UDim2.new(0, 10, 0, 62)
-    presetsRow.BackgroundTransparency = 1
-    presetsRow.ZIndex = 52
-    presetsRow.Parent = panel
-
-    local presetsLayout = Instance.new("UIListLayout")
-    presetsLayout.FillDirection = Enum.FillDirection.Horizontal
-    presetsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    presetsLayout.Padding = UDim.new(0, 6)
-    presetsLayout.Parent = presetsRow
-
-    local function refreshPresetHighlights()
-        for _, child in ipairs(presetsRow:GetChildren()) do
-            if child:IsA("TextButton") then
-                local presetName = child:GetAttribute("PresetName")
-                if presetName == Settings.theme then
-                    child.BackgroundTransparency = 0.1
-                else
-                    child.BackgroundTransparency = 0.5
-                end
-            end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if string.lower(p.Name) == string.lower(raw)
+        or string.lower(p.DisplayName) == string.lower(raw) then
+            simCachedUserId = p.UserId
+            simCachedName   = raw
+            return p.UserId, raw
         end
     end
 
-    for _, preset in pairs(ThemePresets) do
-        local pBtn = Instance.new("TextButton")
-        pBtn.Size = UDim2.new(0, 28, 0, 28)
-        pBtn.BackgroundColor3 = preset
-        pBtn.BackgroundTransparency = 0.5
-        pBtn.BorderSizePixel = 0
-        pBtn.Text = ""
-        pBtn.AutoButtonColor = false
-        pBtn.ZIndex = 53
-        pBtn.Parent = presetsRow
-        pBtn:SetAttribute("PresetName", tostring(preset))
-        createCorner(pBtn, 14)
-        createStroke(pBtn, Color3.fromRGB(255, 255, 255), 1.5, 0.5)
-
-        pBtn.MouseButton1Click:Connect(function()
-            for name, col in pairs(ThemePresets) do
-                if col == preset then
-                    Settings.theme = name
-                    setAccent(col)
-                    refreshPresetHighlights()
-                    break
-                end
-            end
-        end)
+    local found
+    pcall(function() found = Players:GetUserIdFromNameAsync(raw) end)
+    if found then
+        simCachedUserId = found
+        simCachedName   = raw
+        return found, raw
     end
-    refreshPresetHighlights()
 
-    local shineRow = Instance.new("Frame")
-    shineRow.Size = UDim2.new(1, -20, 0, 34)
-    shineRow.Position = UDim2.new(0, 10, 0, 104)
-    shineRow.BackgroundColor3 = C.Void2
-    shineRow.BackgroundTransparency = 0.3
-    shineRow.BorderSizePixel = 0
-    shineRow.ZIndex = 52
-    shineRow.Parent = panel
-    createCorner(shineRow, 10)
+    return player.UserId, player.DisplayName
+end
 
-    local shineLabel = Instance.new("TextLabel")
-    shineLabel.Size = UDim2.new(1, -70, 1, 0)
-    shineLabel.Position = UDim2.new(0, 12, 0, 0)
-    shineLabel.BackgroundTransparency = 1
-    shineLabel.Text = "✦  Shine Effect"
-    shineLabel.TextColor3 = C.White
-    shineLabel.Font = Enum.Font.GothamBold
-    shineLabel.TextSize = 11
-    shineLabel.TextXAlignment = Enum.TextXAlignment.Left
-    shineLabel.ZIndex = 53
-    shineLabel.Parent = shineRow
-
-    local shineToggle = Instance.new("TextButton")
-    shineToggle.Size = UDim2.new(0, 46, 0, 20)
-    shineToggle.Position = UDim2.new(1, -58, 0.5, -10)
-    shineToggle.BackgroundColor3 = getAccent()
-    shineToggle.BorderSizePixel = 0
-    shineToggle.Text = Settings.shineEnabled and "ON" or "OFF"
-    shineToggle.TextColor3 = C.White
-    shineToggle.Font = Enum.Font.GothamBold
-    shineToggle.TextSize = 9
-    shineToggle.AutoButtonColor = false
-    shineToggle.ZIndex = 53
-    shineToggle.Parent = shineRow
-    createCorner(shineToggle, 10)
-    registerStroke(createStroke(shineToggle, C.White, 1, 0.6))
-
-    shineToggle.MouseButton1Click:Connect(function()
-        Settings.shineEnabled = not Settings.shineEnabled
-        shineToggle.Text = Settings.shineEnabled and "ON" or "OFF"
-        saveSettings()
+local function prewarmSimUser()
+    task.spawn(function()
+        resolveSimUser()
     end)
+end
 
-    local anchorRow = Instance.new("Frame")
-    anchorRow.Size = UDim2.new(1, -20, 0, 40)
-    anchorRow.Position = UDim2.new(0, 10, 0, 148)
-    anchorRow.BackgroundColor3 = C.Void2
-    anchorRow.BackgroundTransparency = 0.3
-    anchorRow.BorderSizePixel = 0
-    anchorRow.ZIndex = 52
-    anchorRow.Parent = panel
-    createCorner(anchorRow, 10)
-
-    local anchorLabel = Instance.new("TextLabel")
-    anchorLabel.Size = UDim2.new(1, -120, 1, 0)
-    anchorLabel.Position = UDim2.new(0, 12, 0, 0)
-    anchorLabel.BackgroundTransparency = 1
-    anchorLabel.Text = "🔒  Anchor Character"
-    anchorLabel.TextColor3 = C.White
-    anchorLabel.Font = Enum.Font.GothamBold
-    anchorLabel.TextSize = 11
-    anchorLabel.TextXAlignment = Enum.TextXAlignment.Left
-    anchorLabel.ZIndex = 53
-    anchorLabel.Parent = anchorRow
-
-    local anchorBtn = Instance.new("TextButton")
-    anchorBtn.Size = UDim2.new(0, 88, 0, 26)
-    anchorBtn.Position = UDim2.new(1, -98, 0.5, -13)
-    anchorBtn.BackgroundColor3 = C.Void3
-    anchorBtn.BorderSizePixel = 0
-    anchorBtn.Text = "ANCHOR"
-    anchorBtn.TextColor3 = C.White
-    anchorBtn.Font = Enum.Font.GothamBold
-    anchorBtn.TextSize = 10
-    anchorBtn.AutoButtonColor = false
-    anchorBtn.ZIndex = 53
-    anchorBtn.Parent = anchorRow
-    createCorner(anchorBtn, 8)
-
-    registerStroke(createStroke(anchorBtn, getAccent(), 1.5, 0.3))
-
-    local function refreshAnchorBtn()
-        if isCharacterAnchored() then
-            anchorBtn.Text = "UNANCHOR"
-            anchorBtn.BackgroundColor3 = C.Red
-            anchorLabel.Text = "🔓  Character Anchored"
-            anchorLabel.TextColor3 = C.Red
-        else
-            anchorBtn.Text = "ANCHOR"
-            anchorBtn.BackgroundColor3 = C.Void3
-            anchorLabel.Text = "🔒  Anchor Character"
-            anchorLabel.TextColor3 = C.White
-        end
+local function fireSimulation()
+    if not skSimMessageInput then return end
+    local msg = skSimMessageInput.GetValue()
+    if not msg or msg == "" then
+        Skibidi.ShowNotification("Erreur", "Message vide", 2, "error")
+        return
     end
-    refreshAnchorBtn()
-
-    anchorBtn.MouseButton1Click:Connect(function()
-        local ok = anchorCharacter()
-        refreshAnchorBtn()
-        if ok then
-            addLog("🔒 Character ANCHORED", C.Green)
-        else
-            addLog("🔓 Character UNANCHORED", C.Orange)
-        end
-    end)
-
-    local info = Instance.new("TextLabel")
-    info.Size = UDim2.new(1, -20, 0, 60)
-    info.Position = UDim2.new(0, 10, 1, -70)
-    info.BackgroundTransparency = 1
-    info.Text = "Nova Sniper v3.3\nSettings saved automatically\nRight Shift = toggle"
-    info.TextColor3 = C.Silver3
-    info.Font = Enum.Font.GothamMedium
-    info.TextSize = 9
-    info.TextXAlignment = Enum.TextXAlignment.Center
-    info.TextYAlignment = Enum.TextYAlignment.Center
-    info.ZIndex = 52
-    info.Parent = panel
-
-    backBtn.MouseButton1Click:Connect(function()
-        panel.Visible = false
-        settingsOpen = false
-    end)
-
-    return panel
+    local uid, uname = resolveSimUser()
+    simulateAnnouncement(msg, uname, uid)
+    Skibidi.ShowNotification("Test", "Notification envoyée", 2, "success")
 end
 
 -- =========================================================
--- GUI
+-- REJOIN VIA RESERVED SERVER  (toujours seul, jamais public)
 -- =========================================================
+local function doReservedRejoin()
+    saveSettings()
 
+    local placeId = game.PlaceId
+
+    -- 1) Crée un serveur réservé (privé, rien que pour toi)
+    local ok, accessCode = pcall(function()
+        return TeleportService:ReserveServer(placeId)
+    end)
+
+    if not ok or not accessCode then
+        -- Fallback : rejoint un serveur normal si ReserveServer échoue
+        pcall(function()
+            TeleportService:Teleport(placeId, player)
+        end)
+        return
+    end
+
+    -- 2) Sauvegarde le code pour pouvoir y revenir plus tard
+    Settings.lastReservedCode = accessCode
+    saveSettings()
+
+    -- 3) Téléporte dans ce serveur réservé (privé)
+    local okTp = pcall(function()
+        TeleportService:TeleportToPrivateServer(placeId, accessCode, {player})
+    end)
+
+    if not okTp then
+        -- Si ça échoue, fallback serveur normal
+        pcall(function()
+            TeleportService:Teleport(placeId, player)
+        end)
+    end
+end
+
+-- =========================================================
+-- GUI  — construit avec Skibidi UI
+-- =========================================================
 local function createGui()
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "Main_" .. math.random(1000, 9999)
-    sg.Parent = playerGui
-    sg.IgnoreGuiInset = true
-    sg.ResetOnSpawn = false
-    sg.DisplayOrder = 100
-    mainGui = sg
 
-    local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 250, 0, 400)
-    main.Position = UDim2.new(0.78, 0, 0.03, 0)
-    main.BackgroundColor3 = C.Void0
-    main.BackgroundTransparency = 0.06
-    main.BorderSizePixel = 0
-    main.Active = true
-    main.Draggable = true
-    main.ClipsDescendants = false
-    main.Parent = sg
-    createCorner(main, 18)
-    createShadow(main, 18)
-    mainFrame = main
-
-    local clip = Instance.new("Frame")
-    clip.Size = UDim2.new(1, 0, 1, 0)
-    clip.BackgroundTransparency = 1
-    clip.ClipsDescendants = true
-    clip.ZIndex = 1
-    clip.Parent = main
-    createCorner(clip, 18)
-    createMarbleOverlay(clip, 0.88, 12)
-    createAnimatedBorder(main, 18)
-
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.new(1, 35, 1, 35)
-    glow.Position = UDim2.new(0, -17.5, 0, -17.5)
-    glow.BackgroundColor3 = getAccent()
-    glow.BackgroundTransparency = 0.91
-    glow.BorderSizePixel = 0
-    glow.ZIndex = -1
-    glow.Parent = main
-    createCorner(glow, 22)
-    pulse(glow, {
-        BackgroundTransparency = 0.96,
-        Size = UDim2.new(1, 45, 1, 45),
-        Position = UDim2.new(0, -22.5, 0, -22.5)
-    }, 3):Play()
-
-    local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 48)
-    header.BackgroundTransparency = 1
-    header.ZIndex = 5
-    header.Parent = clip
-
-    createDiamondIcon(header, 11, 5, 30, "N")
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0, 160, 0, 16)
-    title.Position = UDim2.new(0, 48, 0, 5)
-    title.BackgroundTransparency = 1
-    title.Text = "NOVA SNIPER"
-    title.TextColor3 = C.White
-    title.Font = Enum.Font.GothamBlack
-    title.TextSize = 15
-    title.ZIndex = 5
-    title.Parent = header
-    registerText(title)
-
-    local titleGrad = Instance.new("UIGradient")
-    titleGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.GoldDeep),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, C.GoldDeep),
+    skPanel = Skibidi.CreatePanel({
+        Name     = "NovaSniper",
+        Title    = "NOVA SNIPER",
+        SubTitle = "gold shine · v4.1",
+        Icon     = "crosshair",
+        Width    = 340,
+        Height   = 460,
+        Tabs     = {
+            { Name = "Sniper",   Icon = "crosshair" },
+            { Name = "Musique",  Icon = "music"     },
+            { Name = "Settings", Icon = "settings"  },
+        },
+        DefaultTab = 1,
+        Search     = false,
+        Scaler     = true,
+        ConfirmClose = false,
     })
-    titleGrad.Parent = title
 
-    task.spawn(function()
-        while titleGrad and titleGrad.Parent do
-            if Settings.shineEnabled then
-                titleGrad.Offset = Vector2.new(-1, 0)
-                TweenService:Create(titleGrad, TweenInfo.new(2.2, Enum.EasingStyle.Linear), { Offset = Vector2.new(1, 0) }):Play()
-                task.wait(2.6)
-            else
-                task.wait(0.5)
-            end
-        end
-    end)
+    -- ── Le panel reste EN ARRIÈRE-PLAN (force permanent) ──
+    task.defer(function()
+        if not (skPanel and skPanel.Gui) then return end
+        skPanel.Gui.DisplayOrder = 1
+        skPanel.Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Size = UDim2.new(0, 160, 0, 12)
-    subtitle.Position = UDim2.new(0, 48, 0, 22)
-    subtitle.BackgroundTransparency = 1
-    subtitle.Text = "gold shine · v3.3"
-    subtitle.TextColor3 = C.Green
-    subtitle.Font = Enum.Font.GothamMedium
-    subtitle.TextSize = 8
-    subtitle.ZIndex = 5
-    subtitle.Parent = header
-
-    local settingsBtn = Instance.new("TextButton")
-    settingsBtn.Size = UDim2.new(0, 20, 0, 20)
-    settingsBtn.Position = UDim2.new(1, -48, 0, 14)
-    settingsBtn.BackgroundColor3 = C.Void3
-    settingsBtn.BackgroundTransparency = 0.3
-    settingsBtn.BorderSizePixel = 0
-    settingsBtn.Text = "⚙"
-    settingsBtn.TextColor3 = getAccent()
-    settingsBtn.Font = Enum.Font.GothamBold
-    settingsBtn.TextSize = 12
-    settingsBtn.AutoButtonColor = false
-    settingsBtn.ZIndex = 6
-    settingsBtn.Parent = header
-    createCorner(settingsBtn, 8)
-    registerText(settingsBtn)
-
-    sniperDot = Instance.new("Frame")
-    sniperDot.Size = UDim2.new(0, 8, 0, 8)
-    sniperDot.Position = UDim2.new(1, -20, 0, 20)
-    sniperDot.BackgroundColor3 = C.Green
-    sniperDot.BorderSizePixel = 0
-    sniperDot.ZIndex = 5
-    sniperDot.Parent = header
-    createCorner(sniperDot, 20)
-
-    sniperDotGlow = Instance.new("Frame")
-    sniperDotGlow.Size = UDim2.new(0, 15, 0, 15)
-    sniperDotGlow.Position = UDim2.new(0, -3.5, 0, -3.5)
-    sniperDotGlow.BackgroundColor3 = C.Green
-    sniperDotGlow.BackgroundTransparency = 0.85
-    sniperDotGlow.BorderSizePixel = 0
-    sniperDotGlow.ZIndex = 4
-    sniperDotGlow.Parent = sniperDot
-    createCorner(sniperDotGlow, 20)
-    pulse(sniperDotGlow, {
-        BackgroundTransparency = 0.5,
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(0, -6, 0, -6)
-    }, 1.2):Play()
-
-    local divider = Instance.new("Frame")
-    divider.Size = UDim2.new(1, -18, 0, 1.5)
-    divider.Position = UDim2.new(0, 9, 0, 50)
-    divider.BackgroundColor3 = getAccent()
-    divider.BackgroundTransparency = 0.45
-    divider.BorderSizePixel = 0
-    divider.ZIndex = 5
-    divider.Parent = clip
-
-    local divGrad = Instance.new("UIGradient")
-    divGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, getAccent()),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, getAccent()),
-    })
-    divGrad.Parent = divider
-    registerGrad(divGrad)
-
-    sniperStatus = Instance.new("TextLabel")
-    sniperStatus.Size = UDim2.new(1, -18, 0, 16)
-    sniperStatus.Position = UDim2.new(0, 9, 0, 56)
-    sniperStatus.BackgroundTransparency = 1
-    sniperStatus.Text = "awaiting codes..."
-    sniperStatus.TextColor3 = C.Silver1
-    sniperStatus.Font = Enum.Font.GothamMedium
-    sniperStatus.TextSize = 9
-    sniperStatus.TextTruncate = Enum.TextTruncate.AtEnd
-    sniperStatus.ZIndex = 5
-    sniperStatus.Parent = clip
-
-    progressBar = Instance.new("Frame")
-    progressBar.Size = UDim2.new(1, -18, 0, 4)
-    progressBar.Position = UDim2.new(0, 9, 0, 74)
-    progressBar.BackgroundColor3 = C.Void3
-    progressBar.BackgroundTransparency = 0.2
-    progressBar.BorderSizePixel = 0
-    progressBar.ZIndex = 5
-    progressBar.Parent = clip
-    createCorner(progressBar, 10)
-
-    progressFill = Instance.new("Frame")
-    progressFill.Size = UDim2.new(0, 0, 1, 0)
-    progressFill.BackgroundColor3 = getAccent()
-    progressFill.BorderSizePixel = 0
-    progressFill.ZIndex = 6
-    progressFill.Parent = progressBar
-    createCorner(progressFill, 10)
-
-    local fillGrad = Instance.new("UIGradient")
-    fillGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, getAccent()),
-        ColorSequenceKeypoint.new(0.5, C.GoldBright),
-        ColorSequenceKeypoint.new(1, getAccent()),
-    })
-    fillGrad.Parent = progressFill
-    registerGrad(fillGrad)
-
-    TweenService:Create(fillGrad, TweenInfo.new(2.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = 360 }):Play()
-
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(1, -18, 0, 32)
-    toggleFrame.Position = UDim2.new(0, 9, 0, 86)
-    toggleFrame.BackgroundTransparency = 1
-    toggleFrame.ZIndex = 5
-    toggleFrame.Parent = clip
-
-    sniperToggle = Instance.new("TextButton")
-    sniperToggle.Size = UDim2.new(1, -38, 1, 0)
-    sniperToggle.BackgroundColor3 = getAccent()
-    sniperToggle.BackgroundTransparency = 0.22
-    sniperToggle.BorderSizePixel = 0
-    sniperToggle.Text = "ACTIVE"
-    sniperToggle.TextColor3 = C.White
-    sniperToggle.Font = Enum.Font.GothamBlack
-    sniperToggle.TextSize = 13
-    sniperToggle.AutoButtonColor = false
-    sniperToggle.ZIndex = 5
-    sniperToggle.Parent = toggleFrame
-    createCorner(sniperToggle, 10)
-    addShineOverlay(sniperToggle)
-
-    local toggleGrad = Instance.new("UIGradient")
-    toggleGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.GoldDeep),
-        ColorSequenceKeypoint.new(1, getAccent())
-    })
-    toggleGrad.Rotation = 45
-    toggleGrad.Parent = sniperToggle
-    registerGrad(toggleGrad)
-
-    resetBtn = Instance.new("TextButton")
-    resetBtn.Size = UDim2.new(0, 32, 1, 0)
-    resetBtn.Position = UDim2.new(1, -32, 0, 0)
-    resetBtn.BackgroundColor3 = C.Void3
-    resetBtn.BackgroundTransparency = 0.1
-    resetBtn.BorderSizePixel = 0
-    resetBtn.Text = "↺"
-    resetBtn.TextColor3 = C.Silver1
-    resetBtn.Font = Enum.Font.GothamBold
-    resetBtn.TextSize = 16
-    resetBtn.AutoButtonColor = false
-    resetBtn.ZIndex = 5
-    resetBtn.Parent = toggleFrame
-    createCorner(resetBtn, 10)
-
-    local resetStroke = createStroke(resetBtn, C.Silver3, 1, 0.4)
-    resetBtn.MouseButton1Click:Connect(function()
-        resetCapture()
-        resetStroke.Color = getAccent()
-        task.wait(0.2)
-        resetStroke.Color = C.Silver3
-    end)
-
-    local function setActiveVisual(active)
-        if active then
-            sniperToggle.Text = "ACTIVE"
-            toggleGrad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, C.GoldDeep),
-                ColorSequenceKeypoint.new(1, getAccent())
-            })
-            sniperDot.BackgroundColor3 = C.Green
-            sniperDotGlow.BackgroundColor3 = C.Green
-            sniperStatus.Text = "awaiting codes..."
-            sniperStatus.TextColor3 = getAccent()
-            capturedParts = {}
-            oldTexts = {}
-            seenAt = {}
-            updateProgressBar(0, submitAfter)
-            addLog("» Sniper ACTIVATED", C.Green)
-        else
-            sniperToggle.Text = "DESACTIVÉE"
-            toggleGrad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, C.Silver4),
-                ColorSequenceKeypoint.new(1, C.Silver3)
-            })
-            sniperDot.BackgroundColor3 = C.Red
-            sniperDotGlow.BackgroundColor3 = C.Red
-            sniperStatus.Text = "paused"
-            sniperStatus.TextColor3 = C.Red
-            addLog("» Sniper PAUSED", C.Red)
-        end
-    end
-
-    sniperToggle.MouseButton1Click:Connect(function()
-        isActive = not isActive
-        setActiveVisual(isActive)
-    end)
-
-    local redeemRow = Instance.new("Frame")
-    redeemRow.Size = UDim2.new(1, -18, 0, 24)
-    redeemRow.Position = UDim2.new(0, 9, 0, 126)
-    redeemRow.BackgroundColor3 = C.Void2
-    redeemRow.BackgroundTransparency = 0.38
-    redeemRow.BorderSizePixel = 0
-    redeemRow.ZIndex = 5
-    redeemRow.Parent = clip
-    createCorner(redeemRow, 7)
-
-    local redeemLabel = Instance.new("TextLabel")
-    redeemLabel.Size = UDim2.new(0, 110, 1, 0)
-    redeemLabel.Position = UDim2.new(0, 10, 0, 0)
-    redeemLabel.BackgroundTransparency = 1
-    redeemLabel.Text = "auto redeem"
-    redeemLabel.TextColor3 = C.Silver1
-    redeemLabel.Font = Enum.Font.GothamMedium
-    redeemLabel.TextSize = 9
-    redeemLabel.ZIndex = 5
-    redeemLabel.Parent = redeemRow
-
-    sniperSubmitToggle = Instance.new("TextButton")
-    sniperSubmitToggle.Size = UDim2.new(0, 46, 0, 18)
-    sniperSubmitToggle.Position = UDim2.new(1, -52, 0, 3)
-    sniperSubmitToggle.BackgroundColor3 = getAccent()
-    sniperSubmitToggle.BackgroundTransparency = 0.22
-    sniperSubmitToggle.BorderSizePixel = 0
-    sniperSubmitToggle.Text = autoSubmit and "ON" or "OFF"
-    sniperSubmitToggle.TextColor3 = C.White
-    sniperSubmitToggle.Font = Enum.Font.GothamBold
-    sniperSubmitToggle.TextSize = 9
-    sniperSubmitToggle.AutoButtonColor = false
-    sniperSubmitToggle.ZIndex = 5
-    sniperSubmitToggle.Parent = redeemRow
-    createCorner(sniperSubmitToggle, 6)
-
-    local subGrad = Instance.new("UIGradient")
-    subGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.GoldDeep),
-        ColorSequenceKeypoint.new(1, getAccent())
-    })
-    subGrad.Rotation = 45
-    subGrad.Parent = sniperSubmitToggle
-    registerGrad(subGrad)
-
-    sniperSubmitToggle.MouseButton1Click:Connect(function()
-        autoSubmit = not autoSubmit
-        Settings.autoSubmit = autoSubmit
-        saveSettings()
-        sniperSubmitToggle.Text = autoSubmit and "ON" or "OFF"
-    end)
-
-    local counterRow = Instance.new("Frame")
-    counterRow.Size = UDim2.new(1, -18, 0, 24)
-    counterRow.Position = UDim2.new(0, 9, 0, 154)
-    counterRow.BackgroundColor3 = C.Void2
-    counterRow.BackgroundTransparency = 0.38
-    counterRow.BorderSizePixel = 0
-    counterRow.ZIndex = 5
-    counterRow.Parent = clip
-    createCorner(counterRow, 7)
-
-    local counterLabel = Instance.new("TextLabel")
-    counterLabel.Size = UDim2.new(0, 90, 1, 0)
-    counterLabel.Position = UDim2.new(0, 10, 0, 0)
-    counterLabel.BackgroundTransparency = 1
-    counterLabel.Text = "redeem after"
-    counterLabel.TextColor3 = C.Silver1
-    counterLabel.Font = Enum.Font.GothamMedium
-    counterLabel.TextSize = 9
-    counterLabel.ZIndex = 5
-    counterLabel.Parent = counterRow
-
-    local minus = Instance.new("TextButton")
-    minus.Size = UDim2.new(0, 22, 0, 18)
-    minus.Position = UDim2.new(1, -86, 0, 3)
-    minus.BackgroundColor3 = C.Void3
-    minus.BorderSizePixel = 0
-    minus.Text = "-"
-    minus.TextColor3 = C.White
-    minus.Font = Enum.Font.GothamBold
-    minus.TextSize = 13
-    minus.AutoButtonColor = false
-    minus.ZIndex = 5
-    minus.Parent = counterRow
-    createCorner(minus, 5)
-
-    sniperCount = Instance.new("TextLabel")
-    sniperCount.Size = UDim2.new(0, 26, 0, 18)
-    sniperCount.Position = UDim2.new(1, -62, 0, 3)
-    sniperCount.BackgroundColor3 = C.Void3
-    sniperCount.BorderSizePixel = 0
-    sniperCount.Text = tostring(submitAfter)
-    sniperCount.TextColor3 = getAccent()
-    sniperCount.Font = Enum.Font.GothamBlack
-    sniperCount.TextSize = 13
-    sniperCount.ZIndex = 5
-    sniperCount.Parent = counterRow
-    createCorner(sniperCount, 5)
-    registerText(sniperCount)
-
-    local plus = Instance.new("TextButton")
-    plus.Size = UDim2.new(0, 22, 0, 18)
-    plus.Position = UDim2.new(1, -34, 0, 3)
-    plus.BackgroundColor3 = C.Void3
-    plus.BorderSizePixel = 0
-    plus.Text = "+"
-    plus.TextColor3 = C.White
-    plus.Font = Enum.Font.GothamBold
-    plus.TextSize = 13
-    plus.AutoButtonColor = false
-    plus.ZIndex = 5
-    plus.Parent = counterRow
-    createCorner(plus, 5)
-
-    local function applyCount()
-        sniperCount.Text = tostring(submitAfter)
-        Settings.submitAfter = submitAfter
-        saveSettings()
-        resetCapture()
-    end
-
-    minus.MouseButton1Click:Connect(function()
-        submitAfter = math.max(1, submitAfter - 1)
-        applyCount()
-    end)
-
-    plus.MouseButton1Click:Connect(function()
-        submitAfter = math.min(10, submitAfter + 1)
-        applyCount()
-    end)
-
-    -- LOG PANEL
-    local logContainer = Instance.new("Frame")
-    logContainer.Size = UDim2.new(1, -18, 0, 170)
-    logContainer.Position = UDim2.new(0, 9, 0, 186)
-    logContainer.BackgroundColor3 = C.Void1
-    logContainer.BackgroundTransparency = 0.15
-    logContainer.BorderSizePixel = 0
-    logContainer.ClipsDescendants = true
-    logContainer.ZIndex = 5
-    logContainer.Parent = clip
-    createCorner(logContainer, 10)
-    registerStroke(createStroke(logContainer, getAccent(), 1, 0.5))
-
-    local logHeader = Instance.new("Frame")
-    logHeader.Size = UDim2.new(1, 0, 0, 18)
-    logHeader.BackgroundColor3 = C.Void2
-    logHeader.BackgroundTransparency = 0.3
-    logHeader.BorderSizePixel = 0
-    logHeader.ZIndex = 6
-    logHeader.Parent = logContainer
-    createCorner(logHeader, 8)
-
-    local logTitle = Instance.new("TextLabel")
-    logTitle.Size = UDim2.new(1, -50, 1, 0)
-    logTitle.Position = UDim2.new(0, 8, 0, 0)
-    logTitle.BackgroundTransparency = 1
-    logTitle.Text = "▸ LOGS"
-    logTitle.TextColor3 = getAccent()
-    logTitle.Font = Enum.Font.GothamBlack
-    logTitle.TextSize = 9
-    logTitle.TextXAlignment = Enum.TextXAlignment.Left
-    logTitle.ZIndex = 7
-    logTitle.Parent = logHeader
-    registerText(logTitle)
-
-    local clearLogsBtn = Instance.new("TextButton")
-    clearLogsBtn.Size = UDim2.new(0, 16, 0, 14)
-    clearLogsBtn.Position = UDim2.new(1, -20, 0, 2)
-    clearLogsBtn.BackgroundColor3 = C.Void3
-    clearLogsBtn.BackgroundTransparency = 0.3
-    clearLogsBtn.BorderSizePixel = 0
-    clearLogsBtn.Text = "🗑"
-    clearLogsBtn.TextColor3 = C.Silver2
-    clearLogsBtn.Font = Enum.Font.GothamBold
-    clearLogsBtn.TextSize = 8
-    clearLogsBtn.AutoButtonColor = false
-    clearLogsBtn.ZIndex = 7
-    clearLogsBtn.Parent = logHeader
-    createCorner(clearLogsBtn, 4)
-    clearLogsBtn.MouseButton1Click:Connect(clearLogs)
-
-    logScroll = Instance.new("ScrollingFrame")
-    logScroll.Size = UDim2.new(1, -4, 1, -22)
-    logScroll.Position = UDim2.new(0, 2, 0, 20)
-    logScroll.BackgroundTransparency = 1
-    logScroll.BorderSizePixel = 0
-    logScroll.ScrollBarThickness = 3
-    logScroll.ScrollBarImageColor3 = getAccent()
-    logScroll.ScrollBarImageTransparency = 0.3
-    logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    logScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    logScroll.ZIndex = 6
-    logScroll.Parent = logContainer
-
-    logLayout = Instance.new("UIListLayout")
-    logLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    logLayout.Padding = UDim.new(0, 1)
-    logLayout.Parent = logScroll
-
-    local footer = Instance.new("TextLabel")
-    footer.Size = UDim2.new(1, -28, 0, 12)
-    footer.Position = UDim2.new(0, 0, 0, 362)
-    footer.BackgroundTransparency = 1
-    footer.Text = "GOLD SHINE · RIGHT SHIFT TOGGLE"
-    footer.TextColor3 = C.Silver4
-    footer.Font = Enum.Font.GothamMedium
-    footer.TextSize = 7
-    footer.TextXAlignment = Enum.TextXAlignment.Center
-    footer.ZIndex = 5
-    footer.Parent = clip
-
-    simToggleBtn = Instance.new("TextButton")
-    simToggleBtn.Size = UDim2.new(0, 16, 0, 16)
-    simToggleBtn.Position = UDim2.new(1, -24, 0, 360)
-    simToggleBtn.BackgroundColor3 = C.Void3
-    simToggleBtn.BackgroundTransparency = 0.2
-    simToggleBtn.BorderSizePixel = 0
-    simToggleBtn.Text = "⚗"
-    simToggleBtn.TextColor3 = C.Cyan
-    simToggleBtn.Font = Enum.Font.GothamBold
-    simToggleBtn.TextSize = 10
-    simToggleBtn.AutoButtonColor = false
-    simToggleBtn.ZIndex = 5
-    simToggleBtn.Parent = clip
-    createCorner(simToggleBtn, 5)
-
-    -- ═══════════════════════════════════════════════════════
-    -- SIMULATOR PANEL (REDESIGNED)
-    -- ═══════════════════════════════════════════════════════
-    simPanel = Instance.new("Frame")
-    simPanel.Size = UDim2.new(1, 0, 0, 0)
-    simPanel.Position = UDim2.new(0, 0, 1, 0)
-    simPanel.BackgroundColor3 = C.Void0
-    simPanel.BackgroundTransparency = 0.02
-    simPanel.BorderSizePixel = 0
-    simPanel.ClipsDescendants = true
-    simPanel.ZIndex = 20
-    simPanel.Parent = main
-    createCorner(simPanel, 18)
-    registerStroke(createStroke(simPanel, getAccent(), 1.5, 0.3))
-
-    -- Header simulateur
-    local simHeader = Instance.new("Frame")
-    simHeader.Size = UDim2.new(1, 0, 0, 30)
-    simHeader.BackgroundColor3 = C.Void2
-    simHeader.BackgroundTransparency = 0.2
-    simHeader.BorderSizePixel = 0
-    simHeader.ZIndex = 25
-    simHeader.Parent = simPanel
-    createCorner(simHeader, 14)
-
-    local simHeaderFix = Instance.new("Frame")
-    simHeaderFix.Size = UDim2.new(1, 0, 0, 10)
-    simHeaderFix.Position = UDim2.new(0, 0, 1, -10)
-    simHeaderFix.BackgroundColor3 = C.Void2
-    simHeaderFix.BackgroundTransparency = 0.2
-    simHeaderFix.BorderSizePixel = 0
-    simHeaderFix.ZIndex = 25
-    simHeaderFix.Parent = simHeader
-
-    local simTitle = Instance.new("TextLabel")
-    simTitle.Size = UDim2.new(1, -40, 1, 0)
-    simTitle.Position = UDim2.new(0, 14, 0, 0)
-    simTitle.BackgroundTransparency = 1
-    simTitle.Text = "⚗  TEST NOTIFICATION"
-    simTitle.TextColor3 = getAccent()
-    simTitle.Font = Enum.Font.GothamBlack
-    simTitle.TextSize = 11
-    simTitle.TextXAlignment = Enum.TextXAlignment.Left
-    simTitle.ZIndex = 26
-    simTitle.Parent = simHeader
-    registerText(simTitle)
-
-    -- Avatar row avec preview
-    local avatarRow = Instance.new("Frame")
-    avatarRow.Size = UDim2.new(1, -16, 0, 50)
-    avatarRow.Position = UDim2.new(0, 8, 0, 38)
-    avatarRow.BackgroundColor3 = C.Void2
-    avatarRow.BackgroundTransparency = 0.3
-    avatarRow.BorderSizePixel = 0
-    avatarRow.ZIndex = 21
-    avatarRow.Parent = simPanel
-    createCorner(avatarRow, 10)
-
-    -- Preview avatar (à gauche)
-    simAvatarPreview = Instance.new("ImageLabel")
-    simAvatarPreview.Size = UDim2.new(0, 36, 0, 36)
-    simAvatarPreview.Position = UDim2.new(0, 8, 0.5, -18)
-    simAvatarPreview.BackgroundColor3 = C.Void3
-    simAvatarPreview.BorderSizePixel = 0
-    simAvatarPreview.Image = ""
-    simAvatarPreview.ZIndex = 26
-    simAvatarPreview.Parent = avatarRow
-    createCorner(simAvatarPreview, 18)
-    registerStroke(createStroke(simAvatarPreview, getAccent(), 1.5, 0.2))
-
-    local avatarLabel = Instance.new("TextLabel")
-    avatarLabel.Size = UDim2.new(0, 90, 0, 14)
-    avatarLabel.Position = UDim2.new(0, 52, 0, 8)
-    avatarLabel.BackgroundTransparency = 1
-    avatarLabel.Text = "Pseudo"
-    avatarLabel.TextColor3 = C.Silver1
-    avatarLabel.Font = Enum.Font.GothamMedium
-    avatarLabel.TextSize = 9
-    avatarLabel.TextXAlignment = Enum.TextXAlignment.Left
-    avatarLabel.ZIndex = 25
-    avatarLabel.Parent = avatarRow
-
-    simAvatarInput = Instance.new("TextBox")
-    simAvatarInput.Size = UDim2.new(1, -60, 0, 22)
-    simAvatarInput.Position = UDim2.new(0, 52, 0, 22)
-    simAvatarInput.BackgroundColor3 = C.Void0
-    simAvatarInput.BackgroundTransparency = 0.15
-    simAvatarInput.BorderSizePixel = 0
-    simAvatarInput.Text = ""
-    simAvatarInput.PlaceholderText = "vide = toi"
-    simAvatarInput.PlaceholderColor3 = C.Silver3
-    simAvatarInput.TextColor3 = C.White
-    simAvatarInput.Font = Enum.Font.GothamBold
-    simAvatarInput.TextSize = 10
-    simAvatarInput.ClearTextOnFocus = false
-    simAvatarInput.ZIndex = 25
-    simAvatarInput.Parent = avatarRow
-    createCorner(simAvatarInput, 8)
-    registerStroke(createStroke(simAvatarInput, getAccent(), 1.5, 0.25))
-
-    -- Message row
-    local messageRow = Instance.new("Frame")
-    messageRow.Size = UDim2.new(1, -16, 0, 44)
-    messageRow.Position = UDim2.new(0, 8, 0, 96)
-    messageRow.BackgroundColor3 = C.Void2
-    messageRow.BackgroundTransparency = 0.3
-    messageRow.BorderSizePixel = 0
-    messageRow.ZIndex = 21
-    messageRow.Parent = simPanel
-    createCorner(messageRow, 10)
-
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Size = UDim2.new(0, 90, 0, 14)
-    messageLabel.Position = UDim2.new(0, 10, 0, 6)
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.Text = "Message"
-    messageLabel.TextColor3 = C.Silver1
-    messageLabel.Font = Enum.Font.GothamMedium
-    messageLabel.TextSize = 9
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.ZIndex = 25
-    messageLabel.Parent = messageRow
-
-    simInput = Instance.new("TextBox")
-    simInput.Size = UDim2.new(1, -20, 0, 22)
-    simInput.Position = UDim2.new(0, 10, 0, 20)
-    simInput.BackgroundColor3 = C.Void0
-    simInput.BackgroundTransparency = 0.15
-    simInput.BorderSizePixel = 0
-    simInput.Text = ""
-    simInput.PlaceholderText = "texte de la notification"
-    simInput.PlaceholderColor3 = C.Silver3
-    simInput.TextColor3 = C.White
-    simInput.Font = Enum.Font.GothamBold
-    simInput.TextSize = 10
-    simInput.ClearTextOnFocus = false
-    simInput.ZIndex = 25
-    simInput.Parent = messageRow
-    createCorner(simInput, 8)
-    registerStroke(createStroke(simInput, getAccent(), 1.5, 0.25))
-
-    -- Bouton envoyer
-    simBtn = Instance.new("TextButton")
-    simBtn.Size = UDim2.new(1, -16, 0, 34)
-    simBtn.Position = UDim2.new(0, 8, 0, 148)
-    simBtn.BackgroundColor3 = getAccent()
-    simBtn.BackgroundTransparency = 0.15
-    simBtn.BorderSizePixel = 0
-    simBtn.Text = "Send Test Notification"
-    simBtn.TextColor3 = C.White
-    simBtn.Font = Enum.Font.GothamBlack
-    simBtn.TextSize = 11
-    simBtn.AutoButtonColor = false
-    simBtn.ZIndex = 25
-    simBtn.Parent = simPanel
-    createCorner(simBtn, 10)
-    registerStroke(createStroke(simBtn, C.White, 1.5, 0.5))
-    addShineOverlay(simBtn)
-
-    -- Préview automatique quand on tape le pseudo (UNE SEULE FOIS)
-    local previewDebounce = false
-    simAvatarInput:GetPropertyChangedSignal("Text"):Connect(function()
-        if previewDebounce then return end
-        previewDebounce = true
-        task.delay(0.15, function()
-            previewDebounce = false
-            local txt = simAvatarInput.Text
-            if not txt or txt == "" then
-                simAvatarPreview.Image = ""
-                simAvatarPreview.BackgroundColor3 = C.Void3
-                return
-            end
-            task.spawn(function()
-                local uid = findUserIdFromText(txt)
-                if uid then
-                    local img = getAvatarBig(uid)
-                    if img and simAvatarPreview then
-                        simAvatarPreview.Image = img
-                        simAvatarPreview.BackgroundColor3 = C.Void2
+        local function enforceLayering()
+            if not (skPanel and skPanel.Gui and skPanel.Gui.Parent) then return end
+            skPanel.Gui.DisplayOrder = 1
+            for _, g in ipairs(playerGui:GetChildren()) do
+                if g:IsA("ScreenGui") and g ~= skPanel.Gui then
+                    if g.DisplayOrder <= 1 then
+                        g.DisplayOrder = 100
                     end
                 end
-            end)
-        end)
-    end)
-
-    -- Préview instantané au focus perdu
-    simAvatarInput.FocusLost:Connect(function()
-        local txt = simAvatarInput.Text
-        if not txt or txt == "" then
-            simAvatarPreview.Image = ""
-            return
+            end
         end
+
+        enforceLayering()
+
+        trackConn(playerGui.ChildAdded:Connect(function(child)
+            if child:IsA("ScreenGui") and child ~= skPanel.Gui then
+                if child.DisplayOrder <= 1 then
+                    child.DisplayOrder = 100
+                end
+            end
+        end))
+
         task.spawn(function()
-            local uid = findUserIdFromText(txt)
-            if uid then
-                local img = getAvatarBig(uid)
-                if img and simAvatarPreview then
-                    simAvatarPreview.Image = img
-                    simAvatarPreview.BackgroundColor3 = C.Void2
-                end
+            while not unloaded and skPanel and skPanel.Gui and skPanel.Gui.Parent do
+                task.wait(2)
+                enforceLayering()
             end
         end)
     end)
 
-    local SIM_CLOSED_H = 0
-    local SIM_OPEN_H = 200
+    skTabMain     = skPanel.GetTab(1)
+    skTabMusic    = skPanel.GetTab(2)
+    skTabSettings = skPanel.GetTab(3)
 
-    local function setSimOpen(open)
-        simPanelOpen = open
-        TweenService:Create(simPanel, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Size = UDim2.new(1, 0, 0, open and SIM_OPEN_H or SIM_CLOSED_H),
-            Position = UDim2.new(0, 0, 1, open and 8 or 0)
-        }):Play()
-        simToggleBtn.TextColor3 = open and C.White or C.Cyan
-        simToggleBtn.BackgroundTransparency = open and 0 or 0.2
-        if open then
-            -- Reset preview
-            task.wait(0.05)
-            if simAvatarInput.Text ~= "" then
-                local uid = findUserIdFromText(simAvatarInput.Text)
-                if uid then
-                    local img = getAvatarBig(uid)
-                    if img then simAvatarPreview.Image = img end
-                end
+    -- ── Onglet SNIPER ─────────────────────────────────────
+    Skibidi.CreateSection(skTabMain, { Title = "Status", Open = true })
+
+    skStatusLabel = Skibidi.CreateLabel(skTabMain, {
+        Text  = "awaiting codes...",
+        Color = getAccent(),
+    })
+
+    skProgressBar = Skibidi.CreateProgressBar(skTabMain, {
+        Label = "Progress",
+        Min   = 0, Max = 100,
+        Icon  = "activity",
+    })
+
+    skToggleActive = Skibidi.CreateToggle(skTabMain, {
+        Label   = "Sniper ACTIVE",
+        Default = true,
+        Icon    = "power",
+        OnChanged = function(state)
+            isActive = state
+            if state then
+                resetCapture()
+                if skStatusLabel then skStatusLabel.SetText("awaiting codes...") end
+                addLog("» Sniper ACTIVATED", C.Green)
+            else
+                if skStatusLabel then skStatusLabel.SetText("paused") end
+                addLog("» Sniper PAUSED", C.Red)
             end
-        end
-    end
+        end,
+    })
 
-    simToggleBtn.MouseButton1Click:Connect(function()
-        setSimOpen(not simPanelOpen)
-    end)
+    skAutoSubmitToggle = Skibidi.CreateToggle(skTabMain, {
+        Label   = "Auto redeem",
+        Default = autoSubmit,
+        Icon    = "zap",
+        OnChanged = function(state)
+            autoSubmit = state
+            Settings.autoSubmit = state
+            saveSettings()
+        end,
+    })
 
-    local function fireSim()
-        local message = simInput.Text
-        if not message or message == "" then
-            -- Flash rouge sur le message
-            local orig = messageRow.BackgroundColor3
-            messageRow.BackgroundColor3 = C.Red
-            task.delay(0.2, function()
-                if messageRow then
-                    messageRow.BackgroundColor3 = orig
-                end
-            end)
-            return
-        end
-        local avatarUser = simAvatarInput.Text
-        simulateAnnouncement(message, avatarUser)
-        local original = simBtn.BackgroundColor3
-        simBtn.BackgroundColor3 = C.Green
-        task.delay(0.18, function()
-            if simBtn then
-                TweenService:Create(simBtn, TweenInfo.new(0.25), {BackgroundColor3 = original}):Play()
-            end
+    skCountLabel = Skibidi.CreateSlider(skTabMain, {
+        Label   = "Redeem after",
+        Min     = 1, Max = 10,
+        Default = submitAfter,
+        Step    = 1,
+        Format  = "%.0f",
+        Icon    = "hash",
+        OnChanged = function(v)
+            submitAfter = math.floor(v)
+            Settings.submitAfter = submitAfter
+            saveSettings()
+            resetCapture()
+        end,
+    })
+
+    Skibidi.CreateButton(skTabMain, {
+        Text  = "↺  Reset capture",
+        Icon  = "rotate-ccw",
+        Color = C.Void3,
+        OnClick = function() resetCapture() end,
+    })
+
+    Skibidi.CreateButton(skTabMain, {
+        Text  = "🗑  Clear logs",
+        Icon  = "trash-2",
+        Color = C.Void3,
+        OnClick = function() clearLogs() end,
+    })
+
+    Skibidi.CreateSection(skTabMain, { Title = "Logs", Open = true })
+    skLogModule = Skibidi.CreateStatusLog(skTabMain, { Height = 170, MaxLines = 60 })
+
+    Skibidi.CreateSection(skTabMain, { Title = "Test notification", Open = false })
+
+    skSimAvatarInput = Skibidi.CreateTextInput(skTabMain, {
+        Label       = "Username",
+        Placeholder = "vide = toi",
+        Icon        = "user",
+        Width       = 110,
+    })
+
+    if skSimAvatarInput and skSimAvatarInput.TextBox then
+        skSimAvatarInput.TextBox.FocusLost:Connect(function()
+            simCachedUserId = nil
+            simCachedName   = nil
+            prewarmSimUser()
         end)
-        simInput.Text = ""
+        skSimAvatarInput.TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+            simCachedUserId = nil
+            simCachedName   = nil
+        end)
     end
 
-    simBtn.MouseButton1Click:Connect(fireSim)
-    simInput.FocusLost:Connect(function(enterPressed)
-        if enterPressed then fireSim() end
-    end)
+    skSimMessageInput = Skibidi.CreateTextInput(skTabMain, {
+        Label       = "Message",
+        Placeholder = "texte de la notif",
+        Icon        = "message-square",
+        Width       = 130,
+    })
 
-    settingsPanel = createSettingsPanel(main)
+    Skibidi.CreateButton(skTabMain, {
+        Text  = "Send test notification",
+        Icon  = "send",
+        OnClick = function() fireSimulation() end,
+    })
 
-    settingsBtn.MouseButton1Click:Connect(function()
-        settingsOpen = not settingsOpen
-        settingsPanel.Visible = settingsOpen
-    end)
+    skSimKeybind = Skibidi.CreateKeybind(skTabMain, {
+        Label     = "Simulator hotkey",
+        Default   = simHotkey,
+        Icon      = "keyboard",
+        Flag      = "simHotkey",
+        OnChanged = function(kc)
+            simHotkey = kc
+            Settings.simHotkey = kc.Name
+            saveSettings()
+            addLog("⌨ Simulator hotkey = " .. kc.Name, C.Cyan)
+        end,
+    })
+
+    -- ── Onglet MUSIQUE ────────────────────────────────────
+    Skibidi.CreateSection(skTabMusic, { Title = "Now playing", Open = true })
+
+    skNowPlayingLabel = Skibidi.CreateLabel(skTabMusic, {
+        Text  = "Aucune musique",
+        Color = getAccent(),
+        Icon  = "music",
+    })
+
+    Skibidi.CreateSection(skTabMusic, { Title = "Volume", Open = true })
+
+    skMusicVolumeSlider = Skibidi.CreateSlider(skTabMusic, {
+        Label   = "Volume",
+        Min     = 0, Max = 100,
+        Default = math.floor((Settings.musicVolume or 0.5) * 100),
+        Step    = 1,
+        Format  = "%.0f%%",
+        Icon    = "volume-2",
+        OnChanged = function(v) setVolume(v) end,
+    })
+
+    Skibidi.CreateSection(skTabMusic, { Title = "Songs", Open = true })
+
+    for i, song in ipairs(Songs) do
+        Skibidi.CreateButton(skTabMusic, {
+            Text  = "▶  " .. song.Name,
+            Icon  = "play",
+            Color = C.Void3,
+            OnClick = function() playMusic(i) end,
+        })
+    end
+
+    Skibidi.CreateSection(skTabMusic, { Title = "Controls", Open = true })
+
+    Skibidi.CreateButton(skTabMusic, {
+        Text  = "⏯  Play / Pause",
+        Icon  = "pause",
+        Color = C.Void3,
+        OnClick = function() togglePlayPause() end,
+    })
+
+    Skibidi.CreateButton(skTabMusic, {
+        Text  = "⏹  Stop",
+        Icon  = "square",
+        Color = C.Void3,
+        OnClick = function() stopMusic() end,
+    })
+
+    -- ── Onglet SETTINGS ───────────────────────────────────
+    Skibidi.CreateSection(skTabSettings, { Title = "Apparence", Open = true })
+
+    local presetNames = {}
+    for k in pairs(ThemePresets) do table.insert(presetNames, k) end
+    table.sort(presetNames)
+
+    Skibidi.CreateDropdown(skTabSettings, {
+        Label   = "Accent color",
+        Icon    = "palette",
+        Options = presetNames,
+        Default = Settings.theme,
+        OnChanged = function(name)
+            local c = ThemePresets[name]
+            if c then
+                Settings.theme = name
+                setAccent(c)
+            end
+        end,
+    })
+
+    Skibidi.CreateToggle(skTabSettings, {
+        Label   = "Shine effect",
+        Default = Settings.shineEnabled,
+        Icon    = "sparkles",
+        OnChanged = function(state)
+            Settings.shineEnabled = state
+            saveSettings()
+        end,
+    })
+
+    skKeySoundToggle = Skibidi.CreateToggle(skTabSettings, {
+        Label   = "Key sound",
+        Default = Settings.keySound,
+        Icon    = "volume",
+        OnChanged = function(state)
+            Settings.keySound = state
+            saveSettings()
+        end,
+    })
+
+    Skibidi.CreateSection(skTabSettings, { Title = "Personnage", Open = true })
+
+    skAnchorBtn = Skibidi.CreateToggle(skTabSettings, {
+        Label   = "Anchor character",
+        Default = false,
+        Icon    = "lock",
+        OnChanged = function(state)
+            local nowAnchored = isCharacterAnchored()
+            if state ~= nowAnchored then
+                anchorCharacter()
+            end
+            if isCharacterAnchored() then
+                addLog("🔒 Character ANCHORED", C.Green)
+            else
+                addLog("🔓 Character UNANCHORED", C.Orange)
+            end
+        end,
+    })
+
+    -- ── Danger zone : Rejoin + UNLOAD ─────────────────────
+    Skibidi.CreateSection(skTabSettings, { Title = "Danger zone", Open = true })
+
+    Skibidi.CreateButton(skTabSettings, {
+        Text  = "🔄  Rejoin — Serveur privé (solo)",
+        Icon  = "refresh-cw",
+        Color = Color3.fromRGB(60, 90, 140),
+        TextColor = Color3.fromRGB(220, 235, 255),
+        Confirm = true,
+        ConfirmText = "Créer un serveur privé et rejoindre ?",
+        OnClick = function()
+            doReservedRejoin()
+        end,
+    })
+
+    Skibidi.CreateLabel(skTabSettings, {
+        Text  = "Crée un serveur réservé (privé) rien que pour toi.",
+        Color = C.Silver3,
+    })
+
+    Skibidi.CreateButton(skTabSettings, {
+        Text  = "⚠  UNLOAD — Tout désactiver",
+        Icon  = "power-off",
+        Color = Color3.fromRGB(120, 25, 25),
+        TextColor = Color3.fromRGB(255, 200, 200),
+        Confirm = true,
+        ConfirmText = "Clique encore pour confirmer",
+        OnClick = function()
+            doUnload()
+        end,
+    })
+
+    Skibidi.CreateLabel(skTabSettings, {
+        Text  = "Désactive tout : anti-kick, hooks, hotkeys, musique, UI.",
+        Color = C.Silver3,
+    })
+
+    Skibidi.CreateSection(skTabSettings, { Title = "Infos", Open = true })
+    Skibidi.CreateParagraph(skTabSettings, {
+        Title   = "Nova Sniper v4.1",
+        Icon    = "info",
+        Content = "Skibidi UI edition.\nRight Shift = toggle sniper.\nSimulator hotkey default = T.\nMusic tab with 4 songs.\nKey sound on every keystroke.\nRejoin creates a private server.\nSettings saved automatically.",
+    })
 
     task.defer(function()
         addLog("» Nova Sniper ready", C.Green)
         addLog("» Awaiting codes...", C.Silver2)
     end)
 
-    return sg, setActiveVisual
+    return skPanel
+end
+
+-- =========================================================
+-- UNLOAD
+-- =========================================================
+function doUnload()
+    if unloaded then return end
+    unloaded = true
+    isActive = false
+
+    pcall(stopAntiDie)
+    pcall(stopMusic)
+
+    for _, c in ipairs(unloadConnections) do
+        pcall(function() c:Disconnect() end)
+    end
+    unloadConnections = {}
+
+    pcall(function() Skibidi.Unload() end)
+
+    if activeAnnouncement then
+        pcall(function() activeAnnouncement:Destroy() end)
+        activeAnnouncement = nil
+    end
+
+    for _, g in ipairs(playerGui:GetChildren()) do
+        if g:IsA("ScreenGui")
+        and (g.Name:match("^Notif_") or g.Name:match("^Main_") or g.Name:match("^Loading_")) then
+            pcall(function() g:Destroy() end)
+        end
+    end
+
+    for _, s in ipairs(SoundService:GetChildren()) do
+        if s:IsA("Sound")
+        and (s.Name == "NovaSniperMusic"
+          or s.Name == "NovaKeySound"
+          or s.SoundId == "rbxassetid://12221967") then
+            pcall(function() s:Destroy() end)
+        end
+    end
+
+    print("🟡 NOVA SNIPER — Unloaded.")
 end
 
 -- =========================================================
 -- GUI HOOK
 -- =========================================================
-
 local function hookGui(gui)
     local function scanExisting()
         for _, el in pairs(gui:GetDescendants()) do
@@ -2166,34 +1253,23 @@ local function hookGui(gui)
             end
         end
     end
-
     scanExisting()
 
-    gui.DescendantAdded:Connect(function(el)
+    trackConn(gui.DescendantAdded:Connect(function(el)
         if not el:IsA("TextLabel") then return end
-
         local function tryCapture()
             if el.Parent and el.Visible and el.Text ~= "" then
                 local text = cleanText(el.Text)
-                if #text > 0 then
-                    handleNewText(text)
-                end
+                if #text > 0 then handleNewText(text) end
             end
         end
-
         if el.Text ~= "" then tryCapture() end
-
         local conn
-        conn = el:GetPropertyChangedSignal("Text"):Connect(function()
-            tryCapture()
-        end)
-
+        conn = el:GetPropertyChangedSignal("Text"):Connect(tryCapture)
         el.AncestryChanged:Connect(function(_, parent)
-            if not parent and conn then
-                conn:Disconnect()
-            end
+            if not parent and conn then conn:Disconnect() end
         end)
-    end)
+    end))
 end
 
 local function hookAllowedGuis()
@@ -2202,11 +1278,11 @@ local function hookAllowedGuis()
         if gui and gui:IsA("ScreenGui") then
             hookGui(gui)
         else
-            playerGui.ChildAdded:Connect(function(child)
+            trackConn(playerGui.ChildAdded:Connect(function(child)
                 if child.Name == guiName and child:IsA("ScreenGui") then
                     hookGui(child)
                 end
-            end)
+            end))
         end
     end
 end
@@ -2214,29 +1290,59 @@ end
 -- =========================================================
 -- START
 -- =========================================================
+task.wait(0.5)
 
-task.spawn(function()
-    createLoadingScreen()
-end)
-
-task.wait(2.0)
-
-local _, setActiveVisual = createGui()
-
+createGui()
 hookAllowedGuis()
-
 updateProgressBar(0, submitAfter)
 
-print("🟡 NOVA SNIPER v3.3 - Gold Shine + Improved Simulator")
+print("🟡 NOVA SNIPER v4.1 — Skibidi UI edition")
 
 -- =========================================================
--- RIGHT SHIFT
+-- RIGHT SHIFT  (toggle sniper)
 -- =========================================================
-
-UserInputService.InputBegan:Connect(function(input, gpe)
+trackConn(UserInputService.InputBegan:Connect(function(input, gpe)
+    if unloaded then return end
     if gpe then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
         isActive = not isActive
-        setActiveVisual(isActive)
+        if skToggleActive then
+            skToggleActive.Set(isActive)
+        end
+        if isActive then
+            resetCapture()
+            addLog("» Sniper ACTIVATED (hotkey)", C.Green)
+        else
+            if skStatusLabel then skStatusLabel.SetText("paused") end
+            addLog("» Sniper PAUSED (hotkey)", C.Red)
+        end
     end
-end)
+end))
+
+-- =========================================================
+-- SIMULATOR HOTKEY
+-- =========================================================
+trackConn(UserInputService.InputBegan:Connect(function(input, gpe)
+    if unloaded then return end
+    if gpe then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+    local focused = UserInputService:GetFocusedTextBox()
+    if focused then return end
+
+    if input.KeyCode == simHotkey then
+        fireSimulation()
+    end
+end))
+
+-- =========================================================
+-- KEYSTROKE SOUND
+-- =========================================================
+trackConn(UserInputService.InputBegan:Connect(function(input, gpe)
+    if unloaded then return end
+    if not Settings.keySound then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+    playKeySound()
+end))
