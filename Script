@@ -1,19 +1,657 @@
--- This file was generated at discord.gg/syncrypt
+-- ═══════════════════════════════════════════════════════════
+-- TSBG ULTIMATE - UI noir/blanc + bypass toggle + rejoin
+-- ═══════════════════════════════════════════════════════════
 
-if autoload == nil then
-	autoload = true
-end
-if autoleave == nil then
-	autoleave = true
-end
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local localPlayer = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════════
+-- NOTIFICATION
+-- ═══════════════════════════════════════════════════════════
 pcall(function()
-	if not autoload then
-		return
-	end
-
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/Pjdojefoejhfuh/Nikiontop-/refs/heads/main/2"))()
-
-	if autoleave then
-		queue_on_teleport("            pcall(function()\n                autoload = true\n                autoleave = true\n                loadstring(game:HttpGet(\"https://raw.githubusercontent.com/thegop7y-ui/Unlock-all/refs/heads/main/Noks\"))()\n            end)\n        ")
-	end
+    StarterGui:SetCore("SendNotification", {
+        Title = "TSBG Ultimate",
+        Text = "UI chargee",
+        Duration = 5,
+    })
 end)
+
+-- ═══════════════════════════════════════════════════════════
+-- PROXIMITY PROMPT
+-- ═══════════════════════════════════════════════════════════
+ProximityPromptService.PromptShown:Connect(function(prompt)
+    prompt.HoldDuration = 0
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- ETAT
+-- ═══════════════════════════════════════════════════════════
+local state = {
+    bypassActive = false,
+    tpWalkEnabled = false,
+    tpSpeed = 50,
+    activeTween = nil,
+    originalHumanoid = nil,
+    autoRejoin = false,
+}
+
+-- ═══════════════════════════════════════════════════════════
+-- SONS
+-- ═══════════════════════════════════════════════════════════
+local function playClickSound()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://6895079853"
+        s.Volume = 0.35
+        s.PlaybackSpeed = 1.3
+        s.Parent = game:GetService("SoundService")
+        s:Play()
+        task.delay(0.5, function() s:Destroy() end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- ANIMATION DE CLICK
+-- ═══════════════════════════════════════════════════════════
+local function attachClickAnimation(button)
+    if not button or not button:IsA("GuiButton") then return end
+    button.MouseButton1Down:Connect(function()
+        playClickSound()
+        local flash = Instance.new("Frame", button)
+        flash.Size = UDim2.new(1, 0, 1, 0)
+        flash.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        flash.BackgroundTransparency = 0.6
+        flash.BorderSizePixel = 0
+        flash.ZIndex = 999
+        TweenService:Create(flash, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+        task.delay(0.25, function() flash:Destroy() end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- UI PRINCIPALE
+-- ═══════════════════════════════════════════════════════════
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TsbgUltimateUI"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() screenGui.Parent = game:GetService("CoreGui") end)
+if not screenGui.Parent then screenGui.Parent = localPlayer:WaitForChild("PlayerGui") end
+
+-- ─── Bouton d'ouverture (icône) ───
+local openButton = Instance.new("TextButton")
+openButton.Size = UDim2.new(0, 60, 0, 60)
+openButton.Position = UDim2.new(0.02, 0, 0.3, 0)
+openButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+openButton.BorderSizePixel = 1
+openButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+openButton.Font = Enum.Font.GothamBold
+openButton.TextSize = 24
+openButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+openButton.Text = "NK"
+openButton.Active = true
+openButton.Parent = screenGui
+
+-- ─── Panel principal ───
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 340, 0, 580)
+mainFrame.Position = UDim2.new(0.5, -170, 0.5, -290)
+mainFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+mainFrame.BorderSizePixel = 1
+mainFrame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+mainFrame.Active = true
+mainFrame.Visible = true
+mainFrame.Parent = screenGui
+
+-- Dégradé dégoulinant
+local gradient = Instance.new("UIGradient", mainFrame)
+gradient.Rotation = 45
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(5, 5, 5)),
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(25, 25, 25)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(8, 8, 8)),
+})
+
+-- ─── Titre ───
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 40)
+titleLabel.Position = UDim2.new(0, 0, 0, 10)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 20
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Text = "Niki sae ULTIMATE"
+titleLabel.Parent = mainFrame
+
+local titleGradient = Instance.new("UIGradient", titleLabel)
+titleGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 160, 160)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+})
+
+-- ─── Croix fermer ───
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 30, 0, 30)
+closeButton.Position = UDim2.new(1, -40, 0, 10)
+closeButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+closeButton.BorderSizePixel = 1
+closeButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextSize = 16
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Text = "X"
+closeButton.Parent = mainFrame
+
+-- ─── Separateur 1 ───
+local sep1 = Instance.new("Frame")
+sep1.Size = UDim2.new(1, -20, 0, 1)
+sep1.Position = UDim2.new(0, 10, 0, 55)
+sep1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sep1.BackgroundTransparency = 0.6
+sep1.BorderSizePixel = 0
+sep1.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- BOUTON BYPASS (toggle)
+-- ═══════════════════════════════════════════════════════════
+local bypassButton = Instance.new("TextButton")
+bypassButton.Size = UDim2.new(1, -20, 0, 50)
+bypassButton.Position = UDim2.new(0, 10, 0, 70)
+bypassButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+bypassButton.BorderSizePixel = 1
+bypassButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+bypassButton.Font = Enum.Font.GothamBold
+bypassButton.TextSize = 14
+bypassButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+bypassButton.Text = "BYPASS ANTI-CHEAT : OFF"
+bypassButton.Parent = mainFrame
+
+-- ─── Separateur 2 ───
+local sep2 = Instance.new("Frame")
+sep2.Size = UDim2.new(1, -20, 0, 1)
+sep2.Position = UDim2.new(0, 10, 0, 135)
+sep2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sep2.BackgroundTransparency = 0.6
+sep2.BorderSizePixel = 0
+sep2.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- BOUTON MOVE TO STAND + STOP
+-- ═══════════════════════════════════════════════════════════
+local moveButton = Instance.new("TextButton")
+moveButton.Size = UDim2.new(0.65, -5, 0, 46)
+moveButton.Position = UDim2.new(0, 10, 0, 150)
+moveButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+moveButton.BorderSizePixel = 1
+moveButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+moveButton.Font = Enum.Font.GothamBold
+moveButton.TextSize = 13
+moveButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+moveButton.Text = "MOVE TO STAND"
+moveButton.Parent = mainFrame
+
+local stopButton = Instance.new("TextButton")
+stopButton.Size = UDim2.new(0.35, -5, 0, 46)
+stopButton.Position = UDim2.new(0.65, 0, 0, 150)
+stopButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+stopButton.BorderSizePixel = 1
+stopButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+stopButton.Font = Enum.Font.GothamBold
+stopButton.TextSize = 13
+stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+stopButton.Text = "STOP"
+stopButton.Visible = false
+stopButton.Parent = mainFrame
+
+-- ─── Separateur 3 ───
+local sep3 = Instance.new("Frame")
+sep3.Size = UDim2.new(1, -20, 0, 1)
+sep3.Position = UDim2.new(0, 10, 0, 210)
+sep3.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sep3.BackgroundTransparency = 0.6
+sep3.BorderSizePixel = 0
+sep3.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- BOUTON RESPAWN
+-- ═══════════════════════════════════════════════════════════
+local respawnButton = Instance.new("TextButton")
+respawnButton.Size = UDim2.new(1, -20, 0, 46)
+respawnButton.Position = UDim2.new(0, 10, 0, 225)
+respawnButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+respawnButton.BorderSizePixel = 1
+respawnButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+respawnButton.Font = Enum.Font.GothamBold
+respawnButton.TextSize = 13
+respawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+respawnButton.Text = "RESPAWN CHARACTER"
+respawnButton.Parent = mainFrame
+
+-- ─── Separateur 4 ───
+local sep4 = Instance.new("Frame")
+sep4.Size = UDim2.new(1, -20, 0, 1)
+sep4.Position = UDim2.new(0, 10, 0, 285)
+sep4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sep4.BackgroundTransparency = 0.6
+sep4.BorderSizePixel = 0
+sep4.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- 🔥 NOUVEAU : BOUTON REJOIN SAME SERVER
+-- ═══════════════════════════════════════════════════════════
+local rejoinButton = Instance.new("TextButton")
+rejoinButton.Size = UDim2.new(1, -20, 0, 46)
+rejoinButton.Position = UDim2.new(0, 10, 0, 300)
+rejoinButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+rejoinButton.BorderSizePixel = 1
+rejoinButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+rejoinButton.Font = Enum.Font.GothamBold
+rejoinButton.TextSize = 13
+rejoinButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+rejoinButton.Text = "REJOIN SAME SERVER"
+rejoinButton.Parent = mainFrame
+
+-- ─── Separateur 5 ───
+local sep5 = Instance.new("Frame")
+sep5.Size = UDim2.new(1, -20, 0, 1)
+sep5.Position = UDim2.new(0, 10, 0, 360)
+sep5.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sep5.BackgroundTransparency = 0.6
+sep5.BorderSizePixel = 0
+sep5.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- BOUTON TP WALK
+-- ═══════════════════════════════════════════════════════════
+local tpWalkButton = Instance.new("TextButton")
+tpWalkButton.Size = UDim2.new(1, -20, 0, 46)
+tpWalkButton.Position = UDim2.new(0, 10, 0, 375)
+tpWalkButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+tpWalkButton.BorderSizePixel = 1
+tpWalkButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+tpWalkButton.Font = Enum.Font.GothamBold
+tpWalkButton.TextSize = 13
+tpWalkButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpWalkButton.Text = "TP WALK : OFF"
+tpWalkButton.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- SLIDER DE VITESSE
+-- ═══════════════════════════════════════════════════════════
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, -20, 0, 24)
+speedLabel.Position = UDim2.new(0, 10, 0, 435)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.TextSize = 12
+speedLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Text = "TP SPEED : 50"
+speedLabel.Parent = mainFrame
+
+local speedBar = Instance.new("Frame")
+speedBar.Size = UDim2.new(1, -20, 0, 12)
+speedBar.Position = UDim2.new(0, 10, 0, 470)
+speedBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+speedBar.BorderSizePixel = 1
+speedBar.BorderColor3 = Color3.fromRGB(255, 255, 255)
+speedBar.Parent = mainFrame
+
+local speedFill = Instance.new("Frame")
+speedFill.Size = UDim2.new(0.16, 0, 1, 0)
+speedFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+speedFill.BorderSizePixel = 0
+speedFill.Parent = speedBar
+
+local speedHandle = Instance.new("TextButton")
+speedHandle.Size = UDim2.new(0, 14, 0, 20)
+speedHandle.Position = UDim2.new(0.16, -7, -0.5, 0)
+speedHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+speedHandle.BorderSizePixel = 1
+speedHandle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+speedHandle.Text = ""
+speedHandle.Parent = speedBar
+
+-- ─── Footer ───
+local footer = Instance.new("TextLabel")
+footer.Size = UDim2.new(1, 0, 0, 20)
+footer.Position = UDim2.new(0, 0, 1, -30)
+footer.BackgroundTransparency = 1
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 10
+footer.TextColor3 = Color3.fromRGB(120, 120, 120)
+footer.Text = "TSBG Ultimate v2.1"
+footer.Parent = mainFrame
+
+-- ═══════════════════════════════════════════════════════════
+-- DRAG
+-- ═══════════════════════════════════════════════════════════
+local function makeDraggable(guiObject)
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPosition
+
+    local function updatePosition(input)
+        local delta = input.Position - dragStart
+        guiObject.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+
+    guiObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            dragging = true
+            dragStart = input.Position
+            startPosition = guiObject.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    guiObject.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            updatePosition(input)
+        end
+    end)
+end
+
+makeDraggable(mainFrame)
+makeDraggable(openButton)
+
+-- ═══════════════════════════════════════════════════════════
+-- ANIMATIONS DE CLICK
+-- ═══════════════════════════════════════════════════════════
+attachClickAnimation(openButton)
+attachClickAnimation(closeButton)
+attachClickAnimation(bypassButton)
+attachClickAnimation(moveButton)
+attachClickAnimation(stopButton)
+attachClickAnimation(respawnButton)
+attachClickAnimation(rejoinButton)
+attachClickAnimation(tpWalkButton)
+
+-- ═══════════════════════════════════════════════════════════
+-- OUVERTURE / FERMETURE
+-- ═══════════════════════════════════════════════════════════
+local uiOpen = true
+
+local function openUI()
+    uiOpen = true
+    mainFrame.Visible = true
+    mainFrame.Size = UDim2.new(0, 0, 0, 580)
+    TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 340, 0, 580)
+    }):Play()
+end
+
+local function closeUI()
+    uiOpen = false
+    TweenService:Create(mainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 580)
+    }):Play()
+    task.wait(0.22)
+    mainFrame.Visible = false
+end
+
+openButton.MouseButton1Click:Connect(function()
+    if uiOpen then closeUI() else openUI() end
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+    closeUI()
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- 🔥 REJOIN SAME SERVER
+-- ═══════════════════════════════════════════════════════════
+local function rejoinSameServer()
+    local PlaceId = game.PlaceId
+    local JobId = game.JobId
+
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Rejoin",
+            Text = "Reconnexion au meme serveur...",
+            Duration = 3,
+        })
+    end)
+
+    if JobId ~= "" then
+        -- Teleport au meme serveur
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, localPlayer)
+    else
+        -- Fallback : teleport simple
+        TeleportService:Teleport(PlaceId, localPlayer)
+    end
+end
+
+rejoinButton.MouseButton1Click:Connect(function()
+    rejoinButton.Text = "REJOINING..."
+    rejoinButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+    task.spawn(function()
+        rejoinSameServer()
+    end)
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- BYPASS (toggle)
+-- ═══════════════════════════════════════════════════════════
+bypassButton.MouseButton1Click:Connect(function()
+    local character = localPlayer.Character
+    if not character then return end
+
+    if state.bypassActive then
+        state.bypassActive = false
+        bypassButton.Text = "BYPASS ANTI-CHEAT : OFF"
+        bypassButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+
+        if state.originalHumanoid and state.originalHumanoid.Parent then
+            pcall(function() state.originalHumanoid:Destroy() end)
+        end
+
+        local existingHumanoid = character:FindFirstChildOfClass("Humanoid")
+        if existingHumanoid then existingHumanoid:Destroy() end
+
+        local newHumanoid = Instance.new("Humanoid")
+        newHumanoid.Parent = character
+        state.originalHumanoid = newHumanoid
+    else
+        state.bypassActive = true
+        bypassButton.Text = "BYPASS ANTI-CHEAT : ON"
+        bypassButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+        local oldHumanoid = character:FindFirstChildOfClass("Humanoid")
+        if oldHumanoid then
+            state.originalHumanoid = oldHumanoid
+            oldHumanoid:Destroy()
+        end
+
+        local replacementHumanoid = Instance.new("Humanoid")
+        replacementHumanoid.Parent = character
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- MOVE TO STAND
+-- ═══════════════════════════════════════════════════════════
+moveButton.MouseButton1Click:Connect(function()
+    if state.activeTween then
+        state.activeTween:Cancel()
+        state.activeTween = nil
+    end
+
+    local character = localPlayer.Character
+    if not character then return end
+
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    local targetCFrame = CFrame.new(
+        544.577637,
+        92.0762939,
+        -364.869049,
+        -1, 0, 0,
+        0, 1, 0,
+        0, 0, -1
+    )
+
+    local tweenInfo = TweenInfo.new(7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0)
+
+    state.activeTween = TweenService:Create(rootPart, tweenInfo, {
+        CFrame = targetCFrame,
+    })
+
+    stopButton.Visible = true
+
+    state.activeTween.Completed:Connect(function()
+        stopButton.Visible = false
+        state.activeTween = nil
+    end)
+
+    state.activeTween:Play()
+end)
+
+stopButton.MouseButton1Click:Connect(function()
+    if state.activeTween then
+        state.activeTween:Cancel()
+        state.activeTween = nil
+    end
+    stopButton.Visible = false
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- RESPAWN
+-- ═══════════════════════════════════════════════════════════
+respawnButton.MouseButton1Click:Connect(function()
+    local character = localPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.Health = 0
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- TP WALK
+-- ═══════════════════════════════════════════════════════════
+tpWalkButton.MouseButton1Click:Connect(function()
+    state.tpWalkEnabled = not state.tpWalkEnabled
+
+    if state.tpWalkEnabled then
+        tpWalkButton.Text = "TP WALK : ON"
+        tpWalkButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    else
+        tpWalkButton.Text = "TP WALK : OFF"
+        tpWalkButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- SLIDER
+-- ═══════════════════════════════════════════════════════════
+local draggingSpeed = false
+
+local function updateSpeed(input)
+    local relativePosition = math.clamp(
+        (input.Position.X - speedBar.AbsolutePosition.X) / speedBar.AbsoluteSize.X,
+        0, 1
+    )
+    state.tpSpeed = math.floor(1 + relativePosition * 299)
+    speedHandle.Position = UDim2.new(relativePosition, -7, -0.5, 0)
+    speedFill.Size = UDim2.new(relativePosition, 0, 1, 0)
+    speedLabel.Text = "TP SPEED : " .. state.tpSpeed
+end
+
+speedHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+    then
+        draggingSpeed = true
+    end
+end)
+
+speedBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+    then
+        draggingSpeed = true
+        updateSpeed(input)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+    then
+        draggingSpeed = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if draggingSpeed
+        and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch)
+    then
+        updateSpeed(input)
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- HEARTBEAT : TP Walk
+-- ═══════════════════════════════════════════════════════════
+RunService.Heartbeat:Connect(function(deltaTime)
+    if not state.tpWalkEnabled then return end
+
+    local character = localPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+    if humanoid and rootPart and humanoid.MoveDirection.Magnitude > 0 then
+        rootPart.CFrame = rootPart.CFrame + humanoid.MoveDirection * state.tpSpeed * deltaTime
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- AUTO-RESET AU RESPAWN
+-- ═══════════════════════════════════════════════════════════
+localPlayer.CharacterAdded:Connect(function(char)
+    state.bypassActive = false
+    state.originalHumanoid = nil
+    if bypassButton then
+        bypassButton.Text = "BYPASS ANTI-CHEAT : OFF"
+        bypassButton.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    end
+end)
+
+print("[TSBG Ultimate] Charge - v2.1 + Rejoin")
